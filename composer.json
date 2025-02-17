@@ -1,0 +1,45 @@
+{
+    "name": "temant/container",
+    "description": "A lightweight dependency injection container.",
+    "type": "library",
+    "keywords": [
+        "dependency injection",
+        "container",
+        "psr-11"
+    ],
+    "authors": [
+        {
+            "name": "Emad Almahdi",
+            "email": "emad.storm@gmail.com"
+        }
+    ],
+    "version": "1.0.0",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Temant\\Container\\": "Src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\Temant\\Container\\": "Tests/"
+        }
+    },
+    "require": {
+        "psr/container": "^2.0"
+    },
+    "require-dev": {
+        "symfony/var-dumper": "^7.1",
+        "phpunit/phpunit": "^11.2",
+        "phpstan/phpstan": "^2.0"
+    },
+    "scripts": {
+        "test": [
+            "@phpunit",
+            "@phpstan"
+        ],
+        "phpunit": "vendor/bin/phpunit",
+        "phpstan": "vendor/bin/phpstan analyse src --level=max"
+    },
+    "minimum-stability": "stable"
+}
