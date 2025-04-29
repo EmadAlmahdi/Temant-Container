@@ -13,7 +13,6 @@
             "email": "emad.storm@gmail.com"
         }
     ],
-    "version": "1.0.0",
     "license": "MIT",
     "autoload": {
         "psr-4": {
