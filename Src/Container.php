@@ -53,28 +53,22 @@ class Container implements ContainerInterface
      * @return TT The entry instance, guaranteed to be an object of type $id.
      * @throws Exception If the entry cannot be resolved.
      */
-    public function get(string $id): object
+    public function get(string $id): mixed
     {
-        // Check if object is in entries
-        if ($this->has($id)) {
-            $entry = $this->entries[$id];
-            $resolved = $entry($this);
-
-            if (!$resolved instanceof $id) {
-                throw new Exception("Resolved entry is not an instance of {$id}");
+        try {
+            if ($this->has($id)) {
+                $entry = $this->entries[$id];
+                return $entry($this);
             }
 
-            return $resolved;
+            if (class_exists($id)) {
+                return $this->resolver->resolve($id);
+            }
+
+            throw new Exception("Entry \"$id\" not found in container");
+        } catch ( Exception $e) {
+            throw new Exception("Error retrieving entry \"$id\"", 0, $e);
         }
-
-        // Resolve object
-        $resolved = $this->resolver->resolve($id);
-
-        if (!$resolved instanceof $id) {
-            throw new Exception("Resolved entry is not an instance of {$id}");
-        }
-
-        return $resolved;
     }
 
     /**
