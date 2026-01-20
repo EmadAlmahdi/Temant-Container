@@ -1,12 +1,11 @@
 <?php
-
 declare(strict_types=1);
 
 namespace Tests\Temant\Container\Fixtures;
 
-class WithConstructorClass
+final class ConstructorWithNullableBuiltin
 {
-    public function __construct(Foo $foo, Bar $bar)
+    public function __construct(?string $value)
     {
     }
 }

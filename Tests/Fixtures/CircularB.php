@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Temant\Container\Fixtures;
 
-class WithConstructorClass
+final class CircularB
 {
-    public function __construct(Foo $foo, Bar $bar)
+    public function __construct(public CircularA $a)
     {
     }
 }

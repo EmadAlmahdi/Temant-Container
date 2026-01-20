@@ -32,4 +32,16 @@ class ClassResolutionException extends Exception
     {
         return new self("Class $className is not instantiable.");
     }
+
+    /**
+     * Creates an exception for a circular dependency detected during class resolution.
+     *
+     * @param string $class The name of the class involved in the circular dependency.
+     * @param string $chain A string representation of the dependency chain.
+     * @return self The constructed exception.
+     */
+    public static function circularDependency(string $class, string $chain): self
+    {
+        return new self("Circular dependency detected while resolving $class: $chain");
+    }
 }

@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Temant\Container\Resolver;
 
-use Temant\Container\Exception\ClassResolutionException;
 use ReflectionClass;
 use ReflectionMethod;
+use Temant\Container\Exception\ClassResolutionException;
 
-use function class_exists;
 use function array_map;
+use function class_exists;
+use function implode;
+use function in_array;
 
 /**
  * Resolves and instantiates a class by handling its constructor and dependencies.
@@ -21,8 +23,15 @@ use function array_map;
  */
 class ConstructorResolver
 {
+    /**
+     * Constructor for the ConstructorResolver class.
+     *
+     * @param ParameterResolver $parameterResolver The parameter resolver used to resolve constructor parameters.
+     * @param array<class-string> $resolvingStack Reference to the current resolving stack to detect circular dependencies.
+     */
     public function __construct(
-        private readonly ParameterResolver $parameterResolver
+        private readonly ParameterResolver $parameterResolver,
+        private array &$resolvingStack
     ) {
     }
 
@@ -45,20 +54,30 @@ class ConstructorResolver
             throw ClassResolutionException::classNotFound($id);
         }
 
-        $reflectionClass = new ReflectionClass($id);
-
-        if (!$reflectionClass->isInstantiable()) {
-            throw ClassResolutionException::notInstantiable($id);
+        if (in_array($id, $this->resolvingStack, true)) {
+            $chain = implode(' -> ', [...$this->resolvingStack, $id]);
+            throw ClassResolutionException::circularDependency($id, $chain);
         }
 
-        $constructor = $reflectionClass->getConstructor();
-        if ($constructor === null) {
-            return $reflectionClass->newInstance();
-        }
+        $this->resolvingStack[] = $id;
 
-        // Resolve and inject dependencies into the constructor
-        $dependencies = $this->resolveDependencies($constructor);
-        return $reflectionClass->newInstanceArgs($dependencies);
+        try {
+            $reflectionClass = new ReflectionClass($id);
+
+            if (!$reflectionClass->isInstantiable()) {
+                throw ClassResolutionException::notInstantiable($id);
+            }
+
+            $constructor = $reflectionClass->getConstructor();
+            if ($constructor === null) {
+                return $reflectionClass->newInstance();
+            }
+
+            $dependencies = $this->resolveDependencies($constructor);
+            return $reflectionClass->newInstanceArgs($dependencies);
+        } finally {
+            array_pop($this->resolvingStack);
+        }
     }
 
     /**

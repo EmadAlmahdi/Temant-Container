@@ -4,22 +4,37 @@ declare(strict_types=1);
 
 namespace Temant\Container\Resolver;
 
-use Temant\Container\ContainerInterface;
-use ReflectionParameter;
 use ReflectionNamedType;
+use ReflectionParameter;
 use ReflectionUnionType;
+use Temant\Container\ContainerInterface;
 use Temant\Container\Exception\UnresolvableParameterException;
 
+use function class_exists;
+
 /**
- * ParameterResolver class responsible for resolving dependencies based on reflection.
+ * Resolves constructor/callable parameters using reflection + container rules.
  *
- * This class resolves a single parameter by determining its type and retrieving the
- * corresponding dependency from the container. If autowiring is enabled, the resolver
- * will attempt to fetch the required dependencies automatically. The resolver throws
- * specific exceptions if a parameter cannot be resolved.
+ * Resolution rules:
+ * - Untyped parameters are not resolvable
+ * - Union types are not supported (by design)
+ * - Variadics are not supported (by design)
+ * - For object types:
+ *      1) if container has it => use it
+ *      2) if autowiring enabled and class exists => container->get(type)
+ *      3) if nullable => null
+ *      4) if default exists => default
+ *      5) else => throw
+ * - For built-ins (string/int/bool/array/etc.):
+ *      - use default if available
+ *      - if nullable => null
+ *      - else => throw
  */
-class ParameterResolver
+final class ParameterResolver
 {
+    /**
+     * @param bool $autowiringEnabled Whether autowiring is enabled.
+     */
     public function __construct(
         private readonly ContainerInterface $container,
         private readonly bool $autowiringEnabled
@@ -40,38 +55,61 @@ class ParameterResolver
      */
     public function resolveParameter(ReflectionParameter $param): mixed
     {
+        if ($param->isVariadic()) {
+            throw UnresolvableParameterException::variadicNotSupported($param->getName());
+        }
+
         $type = $param->getType();
 
-        // Parameter must be type-hinted
         if ($type === null) {
             throw UnresolvableParameterException::notTypeHinted($param->getName());
         }
 
-        // Union types are not supported
         if ($type instanceof ReflectionUnionType) {
             throw UnresolvableParameterException::unionTypeNotSupported($param->getName());
         }
 
-        // Resolve if default value isset
-        if ($param->isDefaultValueAvailable()) {
-            return $param->getDefaultValue();
+        if (!$type instanceof ReflectionNamedType) {
+            throw UnresolvableParameterException::unsupportedType($param->getName(), (string) $type);
         }
 
-        // Resolve parameter if it's a named type and not a built-in type
-        if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
+        // Object types (classes/interfaces)
+        if (!$type->isBuiltin()) {
             $className = $type->getName();
+            $nullable = $type->allowsNull();
 
+            // 1) Explicitly registered?
             if ($this->container->has($className)) {
                 return $this->container->get($className);
             }
 
-            if ($this->autowiringEnabled) {
+            // 2) Autowire?
+            if ($this->autowiringEnabled === true && class_exists($className)) {
                 return $this->container->get($className);
+            }
+
+            // 3) Nullable => null
+            if ($nullable) {
+                return null;
+            }
+
+            // 4) Default (AFTER attempting DI;)
+            if ($param->isDefaultValueAvailable()) {
+                return $param->getDefaultValue();
             }
 
             throw UnresolvableParameterException::notRegisteredInContainer($param->getName(), $className);
         }
 
-        throw UnresolvableParameterException::unsupportedType($param->getName(), (string) $type);
+        // Built-in scalar/array/etc.
+        if ($param->isDefaultValueAvailable()) {
+            return $param->getDefaultValue();
+        }
+
+        if ($type->allowsNull()) {
+            return null;
+        }
+
+        throw UnresolvableParameterException::unsupportedType($param->getName(), $type->getName());
     }
 }

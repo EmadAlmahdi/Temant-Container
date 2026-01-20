@@ -1,4 +1,4 @@
-<?php 
+<?php
 
 declare(strict_types=1);
 
@@ -6,103 +6,147 @@ namespace Tests\Temant\Container;
 
 use PHPUnit\Framework\TestCase;
 use Temant\Container\Container;
-use Exception;
+use Temant\Container\Exception\ClassResolutionException;
+use Temant\Container\Exception\ContainerException;
 use Temant\Container\Exception\NotFoundException;
-use Tests\Temant\Container\Fixtures\Baz;
-use Tests\Temant\Container\Fixtures\Foo;
 use Tests\Temant\Container\Fixtures\Bar;
+use Tests\Temant\Container\Fixtures\Baz;
+use Tests\Temant\Container\Fixtures\CircularA;
+use Tests\Temant\Container\Fixtures\Foo;
 use Tests\Temant\Container\Fixtures\SomeClass;
-use Throwable;
 
-class ContainerTest extends TestCase
+final class ContainerTest extends TestCase
 {
     private Container $container;
 
     protected function setUp(): void
     {
-        $this->container = new Container();
+        $this->container = new Container(true);
+    }
+
+    public function testFactoryReturnsNewInstanceEachTime(): void
+    {
+        $this->container->factory(Foo::class, fn(): Foo => new Foo());
+
+        $a = $this->container->get(Foo::class);
+        $b = $this->container->get(Foo::class);
+
+        self::assertInstanceOf(Foo::class, $a);
+        self::assertInstanceOf(Foo::class, $b);
+        self::assertNotSame($a, $b);
+    }
+
+    public function testSetReturnsSharedInstanceEachTime(): void
+    {
+        $this->container->set(Foo::class, fn(): Foo => new Foo());
+
+        $a = $this->container->get(Foo::class);
+        $b = $this->container->get(Foo::class);
+
+        self::assertSame($a, $b);
     }
 
     public function testGetReturnsResolvedInstance(): void
     {
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
+
         $instance = $this->container->get(SomeClass::class);
-        $this->assertInstanceOf(SomeClass::class, $instance);
+
+        self::assertInstanceOf(SomeClass::class, $instance);
     }
 
-    public function testFailedGetThrowsNotFoundException(): void
+    public function testGetUnregisteredExistingClassWithoutAutowiringThrowsNotFound(): void
+    {
+        $this->container->setAutowiring(false);
+
+        $this->expectException(NotFoundException::class);
+        $this->container->get(SomeClass::class);
+    }
+
+    public function testGetNonExistentClassThrowsNotFound(): void
     {
         $this->expectException(NotFoundException::class);
         $this->container->get('NonExistentClass');
     }
 
-    public function testautoResolve(): void
+    public function testAutoResolve(): void
     {
         $instance = $this->container->get(Baz::class);
-        $this->assertInstanceOf(Baz::class, $instance);
+        self::assertInstanceOf(Baz::class, $instance);
     }
 
     public function testSetAddsEntryToContainer(): void
     {
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
-        $this->assertTrue($this->container->has(SomeClass::class));
+        self::assertTrue($this->container->has(SomeClass::class));
     }
 
     public function testSetThrowsExceptionWhenEntryExists(): void
     {
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
 
-        $this->expectException(Exception::class);
-
+        $this->expectException(ContainerException::class);
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
     }
 
     public function testGetAndSetAutowiring(): void
     {
         $this->container->setAutowiring(false);
-        $firstGetter = $this->container->hasAutowiring();
-        $this->assertFalse($firstGetter);
+        self::assertFalse($this->container->hasAutowiring());
 
         $this->container->setAutowiring(true);
-        $secondGetter = $this->container->hasAutowiring();
-        $this->assertTrue($secondGetter);
-
-        $this->assertNotEquals($firstGetter, $secondGetter);
+        self::assertTrue($this->container->hasAutowiring());
     }
 
     public function testRemoveRegisteredEntry(): void
     {
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
-        $this->assertTrue($this->container->has(SomeClass::class));
+        self::assertTrue($this->container->has(SomeClass::class));
 
         $this->container->remove(SomeClass::class);
-        $this->assertFalse($this->container->has(SomeClass::class));
+        self::assertFalse($this->container->has(SomeClass::class));
 
-        $this->expectException(Throwable::class);
+        $this->expectException(ContainerException::class);
         $this->container->remove(SomeClass::class);
     }
 
     public function testClearRegisteredEntries(): void
     {
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
-        $this->container->set(Baz::class, fn(): Baz => new Baz(new Foo, new Bar));
+        $this->container->set(Baz::class, fn(): Baz => new Baz(new Foo(), new Bar()));
 
-        $this->assertTrue($this->container->has(SomeClass::class));
-        $this->assertTrue($this->container->has(Baz::class));
+        self::assertTrue($this->container->has(SomeClass::class));
+        self::assertTrue($this->container->has(Baz::class));
 
         $this->container->clear();
 
-        $this->assertFalse($this->container->has(SomeClass::class));
-        $this->assertFalse($this->container->has(Baz::class));
+        self::assertFalse($this->container->has(SomeClass::class));
+        self::assertFalse($this->container->has(Baz::class));
     }
 
     public function testGetAllRegisteredEntries(): void
     {
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
-        $this->container->set(Baz::class, fn(): Baz => new Baz(new Foo, new Bar));
+        $this->container->set(Baz::class, fn(): Baz => new Baz(new Foo(), new Bar()));
 
         $entries = $this->container->all();
-        $this->assertArrayHasKey(SomeClass::class, $entries);
-        $this->assertArrayHasKey(Baz::class, $entries);
+
+        self::assertArrayHasKey(SomeClass::class, $entries);
+        self::assertArrayHasKey(Baz::class, $entries);
+    }
+
+    public function testCircularDependencyIsWrappedInContainerException(): void
+    {
+        $this->expectException(ContainerException::class);
+
+        try {
+            $this->container->get(CircularA::class);
+        } catch (ContainerException $e) {
+            self::assertInstanceOf(
+                ClassResolutionException::class,
+                $e->getPrevious()
+            );
+            throw $e;
+        }
     }
 }

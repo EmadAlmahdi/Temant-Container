@@ -5,51 +5,57 @@ declare(strict_types=1);
 namespace Temant\Container\Resolver;
 
 use PHPUnit\Framework\TestCase;
+use Temant\Container\Container;
 use Temant\Container\Exception\ClassResolutionException;
 use Tests\Temant\Container\Fixtures\NoConstructorClass;
 use Tests\Temant\Container\Fixtures\NonInstantiableClass;
 use Tests\Temant\Container\Fixtures\WithConstructorClass;
 
-class ConstructorResolverTest extends TestCase
+final class ConstructorResolverTest extends TestCase
 {
-    private $parameterResolver;
+    private Container $container;
+    private ParameterResolver $parameterResolver;
     private ConstructorResolver $resolver;
 
     protected function setUp(): void
     {
-        $this->parameterResolver = $this->createMock(ParameterResolver::class);
-        $this->resolver = new ConstructorResolver($this->parameterResolver);
+        $this->container = new Container(true);
+
+        $this->parameterResolver = new ParameterResolver(
+            $this->container,
+            $this->container->hasAutowiring()
+        );
+
+        // ConstructorResolver expects a resolving stack reference
+        $stack = [];
+        $this->resolver = new ConstructorResolver($this->parameterResolver, $stack);
     }
 
     public function testResolveInstantiatesClassWithoutConstructor(): void
     {
-        $className = NoConstructorClass::class;
-        $this->parameterResolver->method('resolveParameter')->willReturn(null);
+        $instance = $this->resolver->resolve(NoConstructorClass::class);
 
-        $instance = $this->resolver->resolve($className);
-        $this->assertInstanceOf($className, $instance);
+        self::assertInstanceOf(NoConstructorClass::class, $instance);
     }
 
     public function testResolveInstantiatesClassWithConstructor(): void
     {
-        $className = WithConstructorClass::class;
-        $this->parameterResolver->method('resolveParameter')->willReturn(['value']);
+        $instance = $this->resolver->resolve(WithConstructorClass::class);
 
-        $instance = $this->resolver->resolve($className);
-        $this->assertInstanceOf($className, $instance);
+        self::assertInstanceOf(WithConstructorClass::class, $instance);
     }
 
     public function testResolveThrowsExceptionForNonInstantiableClass(): void
     {
         $this->expectException(ClassResolutionException::class);
 
-        $className = NonInstantiableClass::class;
-        $this->resolver->resolve($className);
+        $this->resolver->resolve(NonInstantiableClass::class);
     }
 
     public function testResolveThrowsExceptionForNonExistsClass(): void
     {
-        $this->expectException(ClassResolutionException::class); 
-        $this->resolver->resolve("NotFoundClass");
+        $this->expectException(ClassResolutionException::class);
+
+        $this->resolver->resolve('NotFoundClass');
     }
 }
