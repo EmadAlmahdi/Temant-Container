@@ -165,11 +165,7 @@ class Container implements ContainerInterface
      */
     public function instance(string $id, object $object): self
     {
-        $id = $this->normalizeId($id);
-
-        if ($this->isRegistered($id)) {
-            throw new ContainerException("Entry for '$id' already exists in the container.");
-        }
+        $id = $this->normalizeId($id); 
 
         $this->instances[$id] = $object;
         return $this;
@@ -298,9 +294,9 @@ class Container implements ContainerInterface
                 return $obj;
             }
 
-            throw new NotFoundException("Entry '$id' not found in container.");
+            throw new NotFoundException;
         } catch (NotFoundException $e) {
-            throw $e;
+            throw $e::forEntry($id);
         } catch (ContainerException $e) {
             throw $e;
         } catch (Exception $e) {
@@ -467,6 +463,9 @@ class Container implements ContainerInterface
 
     /**
      * True if an id has a definition in shared/factory.
+     * 
+     * @param class-string|string $id
+     * @return bool
      */
     private function isRegistered(string $id): bool
     {

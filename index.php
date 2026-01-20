@@ -21,6 +21,12 @@ final class Foo
         return $this->name;
     }
 }
+
+$instance = new Foo();
+$container->instance(Foo::class,  $instance);
+$container->instance(Foo::class,  $instance); // throws ContainerException
+dd($container); // false
+
 final class Bar
 {
     public function getName(): string
