@@ -1,8 +1,9 @@
-<?php declare(strict_types=1);
+<?php
 
-namespace Tests\Temant\Container\Fixtures {
-    class Foo
-    {
-    }
+declare(strict_types=1);
+
+namespace Tests\Temant\Container\Fixtures;
+
+class Foo
+{
 }
-

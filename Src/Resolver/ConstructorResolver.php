@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 namespace Temant\Container\Resolver;
 
@@ -71,9 +73,6 @@ class ConstructorResolver
      */
     private function resolveDependencies(ReflectionMethod $constructor): array
     {
-        return array_map(
-            fn($param): mixed => $this->parameterResolver->resolveParameter($param),
-            $constructor->getParameters()
-        );
+        return array_map($this->parameterResolver->resolveParameter(...), $constructor->getParameters());
     }
 }

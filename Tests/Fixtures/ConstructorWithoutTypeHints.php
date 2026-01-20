@@ -1,10 +1,12 @@
-<?php declare(strict_types=1);
+<?php
 
-namespace Tests\Temant\Container\Fixtures {
-    class ConstructorWithoutTypeHints
+declare(strict_types=1);
+
+namespace Tests\Temant\Container\Fixtures;
+
+class ConstructorWithoutTypeHints
+{
+    public function __construct(private $param)
     {
-        public function __construct(private $param)
-        {
-        }
     }
 }

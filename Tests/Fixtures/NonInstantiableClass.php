@@ -1,10 +1,12 @@
-<?php declare(strict_types=1);
+<?php
 
-namespace Tests\Temant\Container\Fixtures {
-    abstract class NonInstantiableClass
+declare(strict_types=1);
+
+namespace Tests\Temant\Container\Fixtures;
+
+abstract class NonInstantiableClass
+{
+    private function __construct()
     {
-        private function __construct()
-        {
-        }
     }
 }

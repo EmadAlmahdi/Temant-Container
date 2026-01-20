@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 namespace Temant\Container;
 
@@ -66,7 +68,7 @@ class Container implements ContainerInterface
             }
 
             throw new Exception("Entry \"$id\" not found in container");
-        } catch ( Exception $e) {
+        } catch (Exception $e) {
             throw new Exception("Error retrieving entry \"$id\"", 0, $e);
         }
     }
