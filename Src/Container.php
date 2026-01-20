@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Temant\Container;
 
 use Exception;
+use Temant\Container\Exception\ContainerException;
+use Temant\Container\Exception\NotFoundException;
 use Temant\Container\Resolver\Resolver;
 
 /** 
@@ -53,23 +55,24 @@ class Container implements ContainerInterface
      * @template TT of object
      * @param class-string<TT> $id Identifier for the entry.
      * @return TT The entry instance, guaranteed to be an object of type $id.
-     * @throws Exception If the entry cannot be resolved.
+     * @throws NotFoundException If the entry is not found.
+     * @throws ContainerException If there is an error during retrieval.
      */
     public function get(string $id): mixed
     {
+        if (!class_exists($id) && !interface_exists($id)) {
+            throw NotFoundException::forEntry($id);
+        }
+
         try {
             if ($this->has($id)) {
                 $entry = $this->entries[$id];
                 return $entry($this);
             }
 
-            if (class_exists($id)) {
-                return $this->resolver->resolve($id);
-            }
-
-            throw new Exception("Entry \"$id\" not found in container");
+            return $this->resolver->resolve($id);
         } catch (Exception $e) {
-            throw new Exception("Error retrieving entry \"$id\"", 0, $e);
+            throw new ContainerException("Error retrieving entry \"$id\"", 0, $e);
         }
     }
 

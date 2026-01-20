@@ -7,6 +7,7 @@ namespace Tests\Temant\Container;
 use PHPUnit\Framework\TestCase;
 use Temant\Container\Container;
 use Exception;
+use Temant\Container\Exception\NotFoundException;
 use Tests\Temant\Container\Fixtures\Baz;
 use Tests\Temant\Container\Fixtures\Foo;
 use Tests\Temant\Container\Fixtures\Bar;
@@ -27,6 +28,12 @@ class ContainerTest extends TestCase
         $this->container->set(SomeClass::class, fn(): SomeClass => new SomeClass());
         $instance = $this->container->get(SomeClass::class);
         $this->assertInstanceOf(SomeClass::class, $instance);
+    }
+
+    public function testFailedGetThrowsNotFoundException(): void
+    {
+        $this->expectException(NotFoundException::class);
+        $this->container->get('NonExistentClass');
     }
 
     public function testautoResolve(): void
