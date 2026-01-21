@@ -245,7 +245,7 @@ class Container implements ContainerInterface
      *  5) autowire (if enabled)
      *
      * @template TT of object
-     * @param class-string<TT>|string $id
+     * @param class-string<TT>
      * @return TT|mixed
      * @throws NotFoundException If entry cannot be found/resolved.
      * @throws ContainerException For other container/runtime errors.
