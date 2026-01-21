@@ -245,7 +245,7 @@ class Container implements ContainerInterface
      *  5) autowire (if enabled)
      *
      * @template TT of object
-     * @param class-string<TT>
+     * @param class-string<TT> $id
      * @return TT|mixed
      * @throws NotFoundException If entry cannot be found/resolved.
      * @throws ContainerException For other container/runtime errors.
@@ -395,8 +395,7 @@ class Container implements ContainerInterface
     /**
      * Invoke a callable while letting the container resolve type-hinted parameters.
      *
-     * Useful for controllers/handlers:
-     *   $container->call([$controller, 'action'])
+     * Useful for controllers/handlers: 
      *   $container->call(fn(LoggerInterface $log) => ...)
      *
      * @param callable $callable

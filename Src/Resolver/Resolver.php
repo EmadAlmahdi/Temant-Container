@@ -13,6 +13,7 @@ use Temant\Container\Resolver\ParameterResolver;
 
 use function array_key_exists;
 use function is_array;
+use function is_string;
 
 /**
  * Resolver class for instantiating and resolving dependencies.
@@ -28,7 +29,7 @@ class Resolver
     /**
      * Current resolving stack to detect circular dependencies.
      *
-     * @var list<class-string>
+     * @var class-string[]
      */
     private array $resolvingStack = [];
 
@@ -69,14 +70,12 @@ class Resolver
     /**
      * Call a callable and autowire its parameters.
      *
-     * @param callable|Closure|string $callable
+     * @param callable $callable
      * @param array<string,mixed> $namedOverrides Override by parameter name
      */
-    public function call(callable|Closure|string $callable, array $namedOverrides = []): mixed
+    public function call(callable $callable, array $namedOverrides = []): mixed
     {
-        $ref = is_array($callable)
-            ? new ReflectionMethod($callable[0], $callable[1])
-            : new ReflectionFunction($callable);
+        $ref = new ReflectionFunction(Closure::fromCallable($callable));
 
         $args = [];
 
