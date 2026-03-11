@@ -40,8 +40,8 @@
             "@phpunit",
             "@phpstan"
         ],
-        "phpunit": "vendor/bin/phpunit --no-coverage",
-        "phpstan": "vendor/bin/phpstan analyse"
+        "phpunit": "vendor/bin/phpunit",
+        "phpstan": "vendor/bin/phpstan"
     },
     "config": {
         "sort-packages": true
