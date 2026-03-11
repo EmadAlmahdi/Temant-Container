@@ -12,7 +12,7 @@ Thank you for considering a contribution! This document outlines the guidelines 
 1. Fork the repository and clone your fork:
 
    ```bash
-   git clone git@github.com:YOUR_USERNAME/Temant-Container.git
+   git clone git@github.com:EmadAlmahdi/Temant-Container.git
    cd Temant-Container
    ```
 
