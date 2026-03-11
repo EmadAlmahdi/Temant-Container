@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Temant\Container\Resolver;
+namespace Tests\Temant\Container\Resolver;
 
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Temant\Container\Container;
 use Temant\Container\Exception\UnresolvableParameterException;
+use Temant\Container\Resolver\ParameterResolver;
 use Tests\Temant\Container\Fixtures\Bar;
 use Tests\Temant\Container\Fixtures\Baz;
 use Tests\Temant\Container\Fixtures\ConstructorWithBuiltInDefault;
@@ -30,195 +32,191 @@ final class ParameterResolverTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->container = new Container(true);
+        $this->container = new Container();
 
-        // Shared-by-default: this will be returned for Foo::class
         $this->container->set(Foo::class, fn(): Foo => new Foo());
 
-        // ParameterResolver expects callable():bool now
         $this->resolver = new ParameterResolver(
             $this->container,
-            $this->container->hasAutowiring()
+            $this->container->hasAutowiring(...),
         );
     }
 
-    public function testResolveParameterThrowsExceptionForNotTypeHinted(): void
+    // -------------------------------------------------------------------------
+    // Error Cases
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function throwsForUntypedParameter(): void
     {
         $this->expectException(UnresolvableParameterException::class);
+        $this->expectExceptionMessageMatches('/no type hint/');
 
-        $reflection = new ReflectionClass(ConstructorWithoutTypeHints::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
-
-        $param = $constructor->getParameters()[0];
+        $param = $this->getFirstConstructorParam(ConstructorWithoutTypeHints::class);
         $this->resolver->resolveParameter($param);
     }
 
-    public function testResolveParameterThrowsExceptionForUnionType(): void
+    #[Test]
+    public function throwsForUnionType(): void
     {
         $this->expectException(UnresolvableParameterException::class);
+        $this->expectExceptionMessageMatches('/Union types/');
 
-        $reflection = new ReflectionClass(ConstructorWithUnionTypes::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
-
-        $param = $constructor->getParameters()[0];
+        $param = $this->getFirstConstructorParam(ConstructorWithUnionTypes::class);
         $this->resolver->resolveParameter($param);
     }
 
-    public function testResolveParameterThrowsExceptionForBuiltInTypesWithoutDefault(): void
+    #[Test]
+    public function throwsForIntersectionType(): void
     {
         $this->expectException(UnresolvableParameterException::class);
+        $this->expectExceptionMessageMatches('/Intersection types/');
 
-        $reflection = new ReflectionClass(ConstructorWithBuiltInTypes::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
-
-        $param = $constructor->getParameters()[0];
+        $param = $this->getFirstConstructorParam(ConstructorWithIntersectionType::class);
         $this->resolver->resolveParameter($param);
     }
 
-    public function testResolveBuiltinDefaultValue(): void
+    #[Test]
+    public function throwsForBuiltInTypeWithoutDefault(): void
     {
-        $reflection = new ReflectionClass(ConstructorWithBuiltInDefault::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
+        $this->expectException(UnresolvableParameterException::class);
 
-        $param = $constructor->getParameters()[0];
+        $param = $this->getFirstConstructorParam(ConstructorWithBuiltInTypes::class);
+        $this->resolver->resolveParameter($param);
+    }
 
+    #[Test]
+    public function throwsForVariadicParameter(): void
+    {
+        $this->expectException(UnresolvableParameterException::class);
+        $this->expectExceptionMessageMatches('/Variadic/');
+
+        $param = $this->getFirstConstructorParam(ConstructorWithVariadic::class);
+        $this->resolver->resolveParameter($param);
+    }
+
+    #[Test]
+    public function throwsForUnresolvableClassWhenAutowiringDisabled(): void
+    {
+        $this->expectException(UnresolvableParameterException::class);
+        $this->expectExceptionMessageMatches('/not registered/');
+
+        $container = new Container(autowiringEnabled: false);
+        $resolver = new ParameterResolver($container, $container->hasAutowiring(...));
+
+        $param = $this->getFirstConstructorParam(Baz::class);
+        $resolver->resolveParameter($param);
+    }
+
+    // -------------------------------------------------------------------------
+    // Successful Resolution
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function resolvesBuiltInDefaultValue(): void
+    {
+        $param = $this->getFirstConstructorParam(ConstructorWithBuiltInDefault::class);
         $value = $this->resolver->resolveParameter($param);
 
         self::assertSame('hello', $value);
     }
 
-    public function testResolveParameterThrowsForVariadicParameter(): void
+    #[Test]
+    public function resolvesNullableObjectAsNullWhenNotResolvable(): void
     {
-        $this->expectException(UnresolvableParameterException::class);
+        $container = new Container(autowiringEnabled: false);
+        $resolver = new ParameterResolver($container, $container->hasAutowiring(...));
 
-        $reflection = new ReflectionClass(ConstructorWithVariadic::class);
-        $param = $reflection->getConstructor()->getParameters()[0];
-
-        $this->resolver->resolveParameter($param);
-    }
-
-    public function testNullableObjectReturnsNullWhenUnresolvable(): void
-    {
-        $container = new Container(false); // autowiring OFF
-        $resolver = new ParameterResolver($container, false);
-
-        $reflection = new ReflectionClass(ConstructorWithNullableObject::class);
-        $param = $reflection->getConstructor()->getParameters()[0];
-
+        $param = $this->getFirstConstructorParam(ConstructorWithNullableObject::class);
         $value = $resolver->resolveParameter($param);
 
         self::assertNull($value);
     }
 
-    public function testNullableBuiltinReturnsNull(): void
+    #[Test]
+    public function resolvesNullableBuiltinAsNull(): void
     {
-        $reflection = new ReflectionClass(ConstructorWithNullableBuiltin::class);
-        $param = $reflection->getConstructor()->getParameters()[0];
-
+        $param = $this->getFirstConstructorParam(ConstructorWithNullableBuiltin::class);
         $value = $this->resolver->resolveParameter($param);
 
         self::assertNull($value);
     }
 
-    public function testUnsupportedNonNamedTypeThrows(): void
+    #[Test]
+    public function resolvesDefaultObjectWhenNotRegistered(): void
     {
-        $this->expectException(UnresolvableParameterException::class);
+        $container = new Container(autowiringEnabled: false);
+        $resolver = new ParameterResolver($container, fn(): bool => false);
 
-        $reflection = new ReflectionClass(ConstructorWithIntersectionType::class);
-        $param = $reflection->getConstructor()->getParameters()[0];
-
-        $this->resolver->resolveParameter($param);
-    }
-
-    public function testResolveReturnsDefaultValueForObjectWhenNotResolvable(): void
-    {
-        $container = new Container(false); // autowiring OFF
-        $resolver = new ParameterResolver(
-            $container,
-            false
-        );
-
-        $reflection = new ReflectionClass(ConstructorWithDefaultObject::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
-
-        $param = $constructor->getParameters()[0];
-
+        $param = $this->getFirstConstructorParam(ConstructorWithDefaultObject::class);
         $value = $resolver->resolveParameter($param);
 
         self::assertInstanceOf(DefaultObjectDep::class, $value);
     }
 
-
-    public function testResolveParameterDefaultObjectDoesNotOverrideContainerBinding(): void
+    #[Test]
+    public function containerBindingWinsOverDefaultValue(): void
     {
-        $reflection = new ReflectionClass(ConstructorWithDefaultValues::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
+        // Remove the Foo from setUp and register a specific instance
+        $this->container->remove(Foo::class);
 
-        // First param is Foo $foo = new Foo()
-        $param = $constructor->getParameters()[0];
-
-        // Register a specific instance in the container and ensure we get THIS object back.
         $expected = new Foo();
-
-        // If you already registered Foo in setUp(), replace it:
-        if ($this->container->has(Foo::class)) {
-            $this->container->remove(Foo::class);
-        }
-
         $this->container->instance(Foo::class, $expected);
 
+        $param = $this->getFirstConstructorParam(ConstructorWithDefaultValues::class);
+        $resolved = $this->resolver->resolveParameter($param);
+
+        self::assertSame($expected, $resolved, 'Container instance must win over default value.');
+    }
+
+    #[Test]
+    public function resolvesFromContainerDefinition(): void
+    {
+        $param = $this->getFirstConstructorParam(Baz::class);
         $resolved = $this->resolver->resolveParameter($param);
 
         self::assertInstanceOf(Foo::class, $resolved);
-        self::assertSame($expected, $resolved, 'Container instance must win over default new Foo().');
     }
 
-    public function testResolveFromContainerDefinitionWins(): void
+    #[Test]
+    public function resolvesViaAutowiringForConcreteClass(): void
     {
-        $reflection = new ReflectionClass(Baz::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
-
-        // Baz::__construct(Foo $foo, Bar $bar)
-        $fooParam = $constructor->getParameters()[0];
-
-        $resolved = $this->resolver->resolveParameter($fooParam);
-        self::assertInstanceOf(Foo::class, $resolved);
-    }
-
-    public function testResolveWithAutowiringForConcreteClass(): void
-    {
-        $reflection = new ReflectionClass(Baz::class);
-        $constructor = $reflection->getConstructor();
+        $ref = new ReflectionClass(Baz::class);
+        $constructor = $ref->getConstructor();
         self::assertNotNull($constructor);
 
         // Baz second param is Bar (not registered, should autowire)
         $barParam = $constructor->getParameters()[1];
-
         $resolved = $this->resolver->resolveParameter($barParam);
+
         self::assertInstanceOf(Bar::class, $resolved);
     }
 
-    public function testUnresolvableClassThrowsWhenAutowiringDisabledAndNotRegistered(): void
+    #[Test]
+    public function exceptionsArePsr11Compliant(): void
     {
-        $this->expectException(UnresolvableParameterException::class);
+        $container = new Container(autowiringEnabled: false);
+        $resolver = new ParameterResolver($container, $container->hasAutowiring(...));
 
-        $container = new Container(false); // autowiring disabled
-        $resolver = new ParameterResolver($container, $container->hasAutowiring());
+        try {
+            $param = $this->getFirstConstructorParam(Baz::class);
+            $resolver->resolveParameter($param);
+            self::fail('Expected UnresolvableParameterException');
+        } catch (\Psr\Container\ContainerExceptionInterface $e) {
+            self::assertInstanceOf(UnresolvableParameterException::class, $e);
+        }
+    }
 
-        $reflection = new ReflectionClass(Baz::class);
-        $constructor = $reflection->getConstructor();
-        self::assertNotNull($constructor);
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
-        // Baz first param is Foo (not registered in this container)
-        $fooParam = $constructor->getParameters()[0];
+    private function getFirstConstructorParam(string $className): \ReflectionParameter
+    {
+        $ref = new ReflectionClass($className);
+        $constructor = $ref->getConstructor();
+        self::assertNotNull($constructor, "Class {$className} must have a constructor.");
 
-        $resolver->resolveParameter($fooParam);
+        return $constructor->getParameters()[0];
     }
 }

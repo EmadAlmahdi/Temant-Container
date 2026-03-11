@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Temant\Container;
 
+use Closure;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Psr\Container\ContainerExceptionInterface;
+use Psr\Container\NotFoundExceptionInterface;
 use Temant\Container\Container;
+use Temant\Container\ContainerInterface;
 use Temant\Container\Exception\ContainerException;
 use Temant\Container\Exception\NotFoundException;
+use Temant\Container\ServiceProviderInterface;
 use Tests\Temant\Container\Fixtures\Bar;
 use Tests\Temant\Container\Fixtures\CallTarget;
 use Tests\Temant\Container\Fixtures\Foo;
@@ -19,17 +25,81 @@ final class ContainerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->c = new Container(true);
+        $this->c = new Container();
     }
 
-    public function testGetThrowsNotFoundExceptionIfIdNotRegisteredAndAutowiringDisabled(): void
+    // -------------------------------------------------------------------------
+    // PSR-11 Contract
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function implementsPsrContainerInterface(): void
+    {
+        self::assertInstanceOf(\Psr\Container\ContainerInterface::class, $this->c);
+        self::assertInstanceOf(ContainerInterface::class, $this->c);
+    }
+
+    #[Test]
+    public function getThrowsNotFoundExceptionForUnknownIdWithAutowiringDisabled(): void
     {
         $this->c->setAutowiring(false);
+
         $this->expectException(NotFoundException::class);
+        $this->expectException(NotFoundExceptionInterface::class);
+
         $this->c->get('non.existing.id');
     }
 
-    public function testMultiRegistersManySharedServices(): void
+    #[Test]
+    public function containerExceptionsImplementPsr11Interface(): void
+    {
+        $this->c->set('bad', fn() => 'not-an-object');
+
+        try {
+            $this->c->get('bad');
+            self::fail('Expected ContainerException');
+        } catch (ContainerExceptionInterface $e) {
+            self::assertInstanceOf(ContainerException::class, $e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared (Singleton) Registration
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function setIsSharedByDefault(): void
+    {
+        $this->c->set(Foo::class, fn(): Foo => new Foo());
+
+        $a = $this->c->get(Foo::class);
+        $b = $this->c->get(Foo::class);
+
+        self::assertSame($a, $b);
+    }
+
+    #[Test]
+    public function setThrowsIfAlreadyRegistered(): void
+    {
+        $this->expectException(ContainerException::class);
+
+        $this->c->set(Foo::class, fn(): Foo => new Foo());
+        $this->c->set(Foo::class, fn(): Foo => new Foo());
+    }
+
+    #[Test]
+    public function singletonIsAliasForSet(): void
+    {
+        $this->c->singleton(Foo::class, fn(): Foo => new Foo());
+
+        $a = $this->c->get(Foo::class);
+        $b = $this->c->get(Foo::class);
+
+        self::assertSame($a, $b);
+    }
+
+    #[Test]
+    public function multiRegistersManySharedServices(): void
     {
         $this->c->multi([
             Foo::class => fn(): Foo => new Foo(),
@@ -42,34 +112,23 @@ final class ContainerTest extends TestCase
         self::assertInstanceOf(SomeClass::class, $this->c->get(SomeClass::class));
     }
 
-    public function testSetIsSharedByDefault(): void
+    #[Test]
+    public function sharedFactoryMustReturnObject(): void
     {
-        $this->c->set(Foo::class, fn(): Foo => new Foo());
+        $this->c->set('bad.shared', fn() => 'not-an-object');
 
-        $a = $this->c->get(Foo::class);
-        $b = $this->c->get(Foo::class);
-
-        self::assertSame($a, $b);
-    }
-
-    public function testSetThrowsIfAlreadyRegistered(): void
-    {
         $this->expectException(ContainerException::class);
-        $this->c->set(Foo::class, fn(): Foo => new Foo());
-        $this->c->set(Foo::class, fn(): Foo => new Foo());
+        $this->expectExceptionMessageMatches('/must return an object/');
+
+        $this->c->get('bad.shared');
     }
 
-    public function testSingletonIsAliasToSet(): void
-    {
-        $this->c->singleton(Foo::class, fn(): Foo => new Foo());
+    // -------------------------------------------------------------------------
+    // Factory Registration
+    // -------------------------------------------------------------------------
 
-        $a = $this->c->get(Foo::class);
-        $b = $this->c->get(Foo::class);
-
-        self::assertSame($a, $b);
-    }
-
-    public function testFactoryReturnsNewInstanceEachTime(): void
+    #[Test]
+    public function factoryReturnsNewInstanceEachTime(): void
     {
         $this->c->factory(Foo::class, fn(): Foo => new Foo());
 
@@ -79,14 +138,32 @@ final class ContainerTest extends TestCase
         self::assertNotSame($a, $b);
     }
 
-    public function testFactoryThrowsIfAlreadyRegistered(): void
+    #[Test]
+    public function factoryThrowsIfAlreadyRegistered(): void
     {
         $this->expectException(ContainerException::class);
+
         $this->c->factory(Foo::class, fn(): Foo => new Foo());
         $this->c->factory(Foo::class, fn(): Foo => new Foo());
     }
 
-    public function testInstanceReturnsSameRegisteredObject(): void
+    #[Test]
+    public function factoryMustReturnObject(): void
+    {
+        $this->c->factory('bad.factory', fn() => 42);
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessageMatches('/must return an object/');
+
+        $this->c->get('bad.factory');
+    }
+
+    // -------------------------------------------------------------------------
+    // Instance Registration
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function instanceReturnsSameRegisteredObject(): void
     {
         $foo = new Foo();
         $this->c->instance(Foo::class, $foo);
@@ -94,19 +171,41 @@ final class ContainerTest extends TestCase
         self::assertSame($foo, $this->c->get(Foo::class));
     }
 
-    public function testBindResolvesAbstractToTarget(): void
+    #[Test]
+    public function instanceThrowsIfAlreadyRegistered(): void
     {
-        // bind "abstract id" to Foo::class
-        $this->c->bind('my.foo', Foo::class);
+        $this->expectException(ContainerException::class);
 
-        // register Foo normally
+        $this->c->instance(Foo::class, new Foo());
+        $this->c->instance(Foo::class, new Foo());
+    }
+
+    #[Test]
+    public function instanceThrowsIfIdRegisteredAsShared(): void
+    {
+        $this->expectException(ContainerException::class);
+
+        $this->c->set(Foo::class, fn() => new Foo());
+        $this->c->instance(Foo::class, new Foo());
+    }
+
+    // -------------------------------------------------------------------------
+    // Bindings / Aliases
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function bindResolvesAbstractToTarget(): void
+    {
+        $this->c->bind('my.foo', Foo::class);
         $this->c->set(Foo::class, fn(): Foo => new Foo());
 
         $obj = $this->c->get('my.foo');
+
         self::assertInstanceOf(Foo::class, $obj);
     }
 
-    public function testAliasIsBind(): void
+    #[Test]
+    public function aliasIsBind(): void
     {
         $this->c->alias('alias.foo', Foo::class);
         $this->c->set(Foo::class, fn(): Foo => new Foo());
@@ -114,7 +213,8 @@ final class ContainerTest extends TestCase
         self::assertInstanceOf(Foo::class, $this->c->get('alias.foo'));
     }
 
-    public function testHasRespectsBindings(): void
+    #[Test]
+    public function hasRespectsBindings(): void
     {
         $this->c->alias('alias.foo', Foo::class);
         $this->c->set(Foo::class, fn(): Foo => new Foo());
@@ -122,7 +222,35 @@ final class ContainerTest extends TestCase
         self::assertTrue($this->c->has('alias.foo'));
     }
 
-    public function testTagAndTaggedReturnInstances(): void
+    #[Test]
+    public function chainedBindingsResolveCorrectly(): void
+    {
+        $this->c->bind('a', 'b');
+        $this->c->bind('b', Foo::class);
+        $this->c->set(Foo::class, fn(): Foo => new Foo());
+
+        self::assertInstanceOf(Foo::class, $this->c->get('a'));
+    }
+
+    #[Test]
+    public function circularBindingLoopThrowsContainerException(): void
+    {
+        $this->c->bind('a', 'b');
+        $this->c->bind('b', 'c');
+        $this->c->bind('c', 'a');
+
+        $this->expectException(ContainerException::class);
+        $this->expectExceptionMessageMatches('/Circular binding loop/');
+
+        $this->c->get('a');
+    }
+
+    // -------------------------------------------------------------------------
+    // Tagging
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function tagAndTaggedReturnInstances(): void
     {
         $this->c->set(Foo::class, fn(): Foo => new Foo());
         $this->c->factory(Bar::class, fn(): Bar => new Bar());
@@ -137,60 +265,295 @@ final class ContainerTest extends TestCase
         self::assertInstanceOf(Bar::class, $items[1]);
     }
 
-    public function testGetReturnsCachedInstanceWhenPresent(): void
+    #[Test]
+    public function taggedReturnsEmptyArrayForUnknownTag(): void
     {
-        $foo = new Foo();
-        $this->c->instance(Foo::class, $foo);
-
-        self::assertSame($foo, $this->c->get(Foo::class));
+        self::assertSame([], $this->c->tagged('nonexistent'));
     }
 
-    public function testGetSharedFactoryMustReturnObjectElseThrowsContainerException(): void
-    {
-        $this->c->set('bad.shared', fn() => 'not-an-object');
+    // -------------------------------------------------------------------------
+    // Extend / Decoration
+    // -------------------------------------------------------------------------
 
+    #[Test]
+    public function extendDecoratesExistingSharedService(): void
+    {
+        $this->c->set(Foo::class, fn(): Foo => new Foo());
+
+        $wrapper = new class extends Foo {
+            public Foo $inner;
+        };
+
+        $this->c->extend(Foo::class, function (object $service, ContainerInterface $c) use ($wrapper): object {
+            $wrapper->inner = $service;
+            return $wrapper;
+        });
+
+        $resolved = $this->c->get(Foo::class);
+
+        self::assertSame($wrapper, $resolved);
+        self::assertInstanceOf(Foo::class, $wrapper->inner);
+    }
+
+    #[Test]
+    public function extendDecoratesFactoryService(): void
+    {
+        $calls = 0;
+
+        $this->c->factory(Foo::class, function () use (&$calls): Foo {
+            $calls++;
+            return new Foo();
+        });
+
+        $this->c->extend(Foo::class, fn(object $service, ContainerInterface $c): object => $service);
+
+        $this->c->get(Foo::class);
+        $this->c->get(Foo::class);
+
+        self::assertSame(2, $calls, 'Factory should be called each time, not cached.');
+    }
+
+    #[Test]
+    public function extendThrowsForUnknownId(): void
+    {
         $this->expectException(ContainerException::class);
-        $this->c->get('bad.shared');
+        $this->expectExceptionMessageMatches('/Cannot extend/');
+
+        $this->c->extend('unknown.id', fn(object $s, ContainerInterface $c): object => $s);
     }
 
-    public function testGetFactoryMustReturnObjectElseThrowsContainerException(): void
+    #[Test]
+    public function multipleExtendersApplyInOrder(): void
     {
-        $this->c->factory('bad.factory', fn() => 'not-an-object');
+        $this->c->set('counter', fn(): \stdClass => (object) ['value' => 0]);
 
-        $this->expectException(ContainerException::class);
-        $this->c->get('bad.factory');
+        $this->c->extend('counter', function (object $s): object {
+            $s->value += 10;
+            return $s;
+        });
+
+        $this->c->extend('counter', function (object $s): object {
+            $s->value *= 2;
+            return $s;
+        });
+
+        $result = $this->c->get('counter');
+
+        self::assertSame(20, $result->value);
     }
 
-    public function testRemoveRemovesEntry(): void
+    // -------------------------------------------------------------------------
+    // Service Providers
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function serviceProviderRegisterAndBoot(): void
     {
-        // shared
+        $registered = false;
+        $booted = false;
+
+        $provider = new class ($registered, $booted) implements ServiceProviderInterface {
+            public function __construct(private bool &$registered, private bool &$booted) {}
+
+            public function register(Container $container): void
+            {
+                $this->registered = true;
+                $container->set(Foo::class, fn() => new Foo());
+            }
+
+            public function boot(Container $container): void
+            {
+                $this->booted = true;
+            }
+        };
+
+        $this->c->register($provider);
+
+        self::assertTrue($registered, 'register() should be called immediately.');
+        self::assertFalse($booted, 'boot() should not be called until boot() is invoked.');
+        self::assertTrue($this->c->has(Foo::class));
+
+        $this->c->boot();
+
+        self::assertTrue($booted, 'boot() should be called after Container::boot().');
+    }
+
+    #[Test]
+    public function lateProviderIsBootedImmediatelyIfContainerAlreadyBooted(): void
+    {
+        $this->c->boot();
+
+        $booted = false;
+
+        $provider = new class ($booted) implements ServiceProviderInterface {
+            public function __construct(private bool &$booted) {}
+            public function register(Container $container): void {}
+            public function boot(Container $container): void { $this->booted = true; }
+        };
+
+        $this->c->register($provider);
+
+        self::assertTrue($booted, 'Late provider should be booted immediately.');
+    }
+
+    #[Test]
+    public function bootIsIdempotent(): void
+    {
+        $count = 0;
+
+        $provider = new class ($count) implements ServiceProviderInterface {
+            public function __construct(private int &$count) {}
+            public function register(Container $container): void {}
+            public function boot(Container $container): void { $this->count++; }
+        };
+
+        $this->c->register($provider);
+        $this->c->boot();
+        $this->c->boot();
+        $this->c->boot();
+
+        self::assertSame(1, $count, 'boot() should only call providers once.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Autowiring
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function autowiringResolvesUnregisteredClass(): void
+    {
+        $obj = $this->c->get(Foo::class);
+
+        self::assertInstanceOf(Foo::class, $obj);
+    }
+
+    #[Test]
+    public function autowiringCachesInstanceByDefault(): void
+    {
+        $a = $this->c->get(Foo::class);
+        $b = $this->c->get(Foo::class);
+
+        self::assertSame($a, $b);
+    }
+
+    #[Test]
+    public function autowiringDoesNotCacheWhenDisabled(): void
+    {
+        $c = new Container(autowiringEnabled: true, cacheAutowire: false);
+
+        $a = $c->get(Foo::class);
+        $b = $c->get(Foo::class);
+
+        self::assertNotSame($a, $b);
+    }
+
+    #[Test]
+    public function setAutowiringFalseAtRuntimePreventsAutowiring(): void
+    {
+        $this->c->setAutowiring(false);
+
+        $this->expectException(NotFoundException::class);
+
+        $this->c->get(Foo::class);
+    }
+
+    #[Test]
+    public function hasReturnsTrueForAutowirableClass(): void
+    {
+        self::assertTrue($this->c->has(Foo::class));
+    }
+
+    #[Test]
+    public function hasReturnsFalseForAutowirableClassWhenAutowiringDisabled(): void
+    {
+        $this->c->setAutowiring(false);
+
+        self::assertFalse($this->c->has(Foo::class));
+    }
+
+    #[Test]
+    public function setAutowiringAndHasAutowiring(): void
+    {
+        $this->c->setAutowiring(false);
+        self::assertFalse($this->c->hasAutowiring());
+
+        $this->c->setAutowiring(true);
+        self::assertTrue($this->c->hasAutowiring());
+    }
+
+    // -------------------------------------------------------------------------
+    // Callable Invocation
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function callDelegatesToResolverAndSupportsNamedOverrides(): void
+    {
+        $target = new CallTarget();
+
+        $result = $this->c->call([$target, 'method'], ['name' => 'override']);
+
+        self::assertSame(SomeClass::class . ':override', $result);
+    }
+
+    #[Test]
+    public function callResolvesClosureParameters(): void
+    {
+        $result = $this->c->call(fn(Foo $foo): string => $foo::class);
+
+        self::assertSame(Foo::class, $result);
+    }
+
+    // -------------------------------------------------------------------------
+    // Removal / Reset
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function removeRemovesSharedEntry(): void
+    {
         $this->c->set(SomeClass::class, fn() => new SomeClass());
         $this->c->remove(SomeClass::class);
-        self::assertFalse($this->c->has(SomeClass::class));
 
-        // factory
+        self::assertNotContains(SomeClass::class, $this->c->keys());
+        self::assertArrayNotHasKey(SomeClass::class, $this->c->allShared());
+    }
+
+    #[Test]
+    public function removeRemovesFactoryEntry(): void
+    {
         $this->c->factory(SomeClass::class, fn() => new SomeClass());
         $this->c->remove(SomeClass::class);
-        self::assertFalse($this->c->has(SomeClass::class));
 
-        // instance
+        // has() may still return true due to autowiring, so check keys()
+        self::assertNotContains(SomeClass::class, $this->c->keys());
+    }
+
+    #[Test]
+    public function removeRemovesInstanceEntry(): void
+    {
         $this->c->instance(SomeClass::class, new SomeClass());
         $this->c->remove(SomeClass::class);
-        self::assertFalse($this->c->has(SomeClass::class));
 
-        // Bind/alias
+        self::assertEmpty($this->c->allInstances());
+    }
+
+    #[Test]
+    public function removeRemovesBindingEntry(): void
+    {
         $this->c->alias('alias.some', SomeClass::class);
         $this->c->remove('alias.some');
-        self::assertFalse($this->c->has('alias.some'));
+
+        self::assertArrayNotHasKey('alias.some', $this->c->allBindings());
     }
 
-    public function testRemoveNonExistingThrowsContainerException(): void
+    #[Test]
+    public function removeNonExistingThrowsContainerException(): void
     {
         $this->expectException(ContainerException::class);
-        $this->c->remove(SomeClass::class);
+        $this->c->remove('totally.unknown.and.not.registered');
     }
 
-    public function testClearRemovesEverything(): void
+    #[Test]
+    public function clearRemovesEverything(): void
     {
         $this->c->set(Foo::class, fn(): Foo => new Foo());
         $this->c->factory(Bar::class, fn(): Bar => new Bar());
@@ -199,14 +562,15 @@ final class ContainerTest extends TestCase
 
         $this->c->clear();
 
-        self::assertFalse($this->c->has(Foo::class));
-        self::assertFalse($this->c->has(Bar::class));
-        self::assertSame([], $this->c->all());
-        self::assertSame([], $this->c->allShared());
-        self::assertSame([], $this->c->allFactories());
+        self::assertEmpty($this->c->allShared());
+        self::assertEmpty($this->c->allFactories());
+        self::assertEmpty($this->c->allInstances());
+        self::assertEmpty($this->c->allBindings());
+        self::assertEmpty($this->c->keys());
     }
 
-    public function testFlushInstancesClearsCacheButKeepsDefinitions(): void
+    #[Test]
+    public function flushInstancesClearsCacheButKeepsDefinitions(): void
     {
         $this->c->set(Foo::class, fn(): Foo => new Foo());
 
@@ -218,43 +582,77 @@ final class ContainerTest extends TestCase
         self::assertTrue($this->c->has(Foo::class));
     }
 
-    public function testSetAutowiringAndHasAutowiring(): void
-    {
-        $this->c->setAutowiring(false);
-        self::assertFalse($this->c->hasAutowiring());
+    // -------------------------------------------------------------------------
+    // Introspection
+    // -------------------------------------------------------------------------
 
-        $this->c->setAutowiring(true);
-        self::assertTrue($this->c->hasAutowiring());
+    #[Test]
+    public function keysReturnsAllRegisteredIds(): void
+    {
+        $this->c->set(Foo::class, fn(): Foo => new Foo());
+        $this->c->factory(Bar::class, fn(): Bar => new Bar());
+        $this->c->instance(SomeClass::class, new SomeClass());
+
+        $keys = $this->c->keys();
+
+        self::assertContains(Foo::class, $keys);
+        self::assertContains(Bar::class, $keys);
+        self::assertContains(SomeClass::class, $keys);
     }
 
-    public function testAllSharedAndAllFactoriesExposeRegistrations(): void
+    #[Test]
+    public function allReturnsStructuredArray(): void
+    {
+        $this->c->set(Foo::class, fn(): Foo => new Foo());
+
+        $all = $this->c->all();
+
+        self::assertArrayHasKey('shared', $all);
+        self::assertArrayHasKey('factories', $all);
+        self::assertArrayHasKey('instances', $all);
+        self::assertArrayHasKey('bindings', $all);
+        self::assertArrayHasKey('tags', $all);
+        self::assertArrayHasKey(Foo::class, $all['shared']);
+    }
+
+    #[Test]
+    public function allSharedAndAllFactoriesExposeRegistrations(): void
     {
         $this->c->set(Foo::class, fn(): Foo => new Foo());
         $this->c->factory(Bar::class, fn(): Bar => new Bar());
 
-        $shared = $this->c->allShared();
-        $factories = $this->c->allFactories();
-
-        self::assertArrayHasKey(Foo::class, $shared);
-        self::assertArrayHasKey(Bar::class, $factories);
+        self::assertArrayHasKey(Foo::class, $this->c->allShared());
+        self::assertArrayHasKey(Bar::class, $this->c->allFactories());
     }
 
-    public function testCallDelegatesToResolverAndSupportsNamedOverrides(): void
+    // -------------------------------------------------------------------------
+    // Cross-registration conflict detection
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function cannotRegisterFactoryIfSharedExists(): void
     {
-        $target = new CallTarget();
-
-        $result = $this->c->call([$target, 'method'], ['name' => 'override']);
-
-        self::assertSame(SomeClass::class . ':override', $result);
-    }
-
-    public function testBindingLoopsThrowContainerException(): void
-    {
-        $this->c->bind('a', 'b');
-        $this->c->bind('b', 'c');
-        $this->c->bind('c', 'a');
-
         $this->expectException(ContainerException::class);
-        $this->c->get('a');
+
+        $this->c->set(Foo::class, fn() => new Foo());
+        $this->c->factory(Foo::class, fn() => new Foo());
+    }
+
+    #[Test]
+    public function cannotRegisterSharedIfFactoryExists(): void
+    {
+        $this->expectException(ContainerException::class);
+
+        $this->c->factory(Foo::class, fn() => new Foo());
+        $this->c->set(Foo::class, fn() => new Foo());
+    }
+
+    #[Test]
+    public function cannotRegisterSharedIfInstanceExists(): void
+    {
+        $this->expectException(ContainerException::class);
+
+        $this->c->instance(Foo::class, new Foo());
+        $this->c->set(Foo::class, fn() => new Foo());
     }
 }

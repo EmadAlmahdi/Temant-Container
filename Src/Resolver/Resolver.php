@@ -6,61 +6,52 @@ namespace Temant\Container\Resolver;
 
 use Closure;
 use ReflectionFunction;
-use ReflectionMethod;
 use Temant\Container\ContainerInterface;
-use Temant\Container\Resolver\ConstructorResolver;
-use Temant\Container\Resolver\ParameterResolver;
 
 use function array_key_exists;
-use function is_array;
-use function is_string;
 
 /**
- * Resolver class for instantiating and resolving dependencies.
+ * Orchestrates class instantiation and callable invocation with dependency injection.
  *
- * This class handles the instantiation of classes and their dependencies
- * using reflection and optionally supports autowiring.
+ * Delegates to {@see ConstructorResolver} for class instantiation and
+ * {@see ParameterResolver} for individual parameter resolution. Maintains
+ * a resolving stack to detect circular dependencies.
  */
-class Resolver
+final class Resolver
 {
-    private ConstructorResolver $constructorResolver;
-    private ParameterResolver $parameterResolver;
+    private readonly ConstructorResolver $constructorResolver;
+    private readonly ParameterResolver $parameterResolver;
 
     /**
      * Current resolving stack to detect circular dependencies.
      *
-     * @var class-string[]
+     * @var list<class-string>
      */
     private array $resolvingStack = [];
 
     /**
-     * Constructor for the Resolver class.
-     *
      * @param ContainerInterface $container The container used for resolving dependencies.
      */
     public function __construct(private readonly ContainerInterface $container)
     {
-        // Autowiring setting is read dynamically at runtime.
         $this->parameterResolver = new ParameterResolver(
             $this->container,
-            $this->container->hasAutowiring()
+            $this->container->hasAutowiring(...),
         );
 
         $this->constructorResolver = new ConstructorResolver(
             $this->parameterResolver,
-            $this->resolvingStack
+            $this->resolvingStack,
         );
     }
 
     /**
-     * Resolves and instantiates a class based on its name.
+     * Resolves and instantiates a class by its fully qualified name.
      *
-     * This method delegates the resolution and instantiation of the class
-     * to the ConstructorResolver. It handles checking if the class exists and
-     * is instantiable, and if so, it resolves any constructor dependencies.
+     * @param class-string $id The class name to resolve.
+     * @return object The resolved instance.
      *
-     * @param string $id The fully qualified class name to resolve.
-     * @return object The resolved instance of the class.
+     * @throws \Temant\Container\Exception\ClassResolutionException If the class cannot be resolved.
      */
     public function resolve(string $id): object
     {
@@ -68,10 +59,15 @@ class Resolver
     }
 
     /**
-     * Call a callable and autowire its parameters.
+     * Invokes a callable while resolving its type-hinted parameters from the container.
      *
-     * @param callable $callable
-     * @param array<string,mixed> $namedOverrides Override by parameter name
+     * Parameters can be overridden by name via the $namedOverrides array.
+     *
+     * @param callable             $callable       The callable to invoke.
+     * @param array<string, mixed> $namedOverrides Override values keyed by parameter name.
+     * @return mixed The return value of the callable.
+     *
+     * @throws \Temant\Container\Exception\UnresolvableParameterException If a parameter cannot be resolved.
      */
     public function call(callable $callable, array $namedOverrides = []): mixed
     {

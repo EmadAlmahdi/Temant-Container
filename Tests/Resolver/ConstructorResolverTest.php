@@ -2,60 +2,66 @@
 
 declare(strict_types=1);
 
-namespace Temant\Container\Resolver;
+namespace Tests\Temant\Container\Resolver;
 
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Temant\Container\Container;
 use Temant\Container\Exception\ClassResolutionException;
+use Temant\Container\Resolver\ConstructorResolver;
+use Temant\Container\Resolver\ParameterResolver;
 use Tests\Temant\Container\Fixtures\NoConstructorClass;
 use Tests\Temant\Container\Fixtures\NonInstantiableClass;
 use Tests\Temant\Container\Fixtures\WithConstructorClass;
 
 final class ConstructorResolverTest extends TestCase
 {
-    private Container $container;
-    private ParameterResolver $parameterResolver;
     private ConstructorResolver $resolver;
 
     protected function setUp(): void
     {
-        $this->container = new Container(true);
+        $container = new Container();
 
-        $this->parameterResolver = new ParameterResolver(
-            $this->container,
-            $this->container->hasAutowiring()
+        $parameterResolver = new ParameterResolver(
+            $container,
+            $container->hasAutowiring(...),
         );
 
-        // ConstructorResolver expects a resolving stack reference
         $stack = [];
-        $this->resolver = new ConstructorResolver($this->parameterResolver, $stack);
+        $this->resolver = new ConstructorResolver($parameterResolver, $stack);
     }
 
-    public function testResolveInstantiatesClassWithoutConstructor(): void
+    #[Test]
+    public function resolveInstantiatesClassWithoutConstructor(): void
     {
         $instance = $this->resolver->resolve(NoConstructorClass::class);
 
         self::assertInstanceOf(NoConstructorClass::class, $instance);
     }
 
-    public function testResolveInstantiatesClassWithConstructor(): void
+    #[Test]
+    public function resolveInstantiatesClassWithConstructor(): void
     {
         $instance = $this->resolver->resolve(WithConstructorClass::class);
 
         self::assertInstanceOf(WithConstructorClass::class, $instance);
     }
 
-    public function testResolveThrowsExceptionForNonInstantiableClass(): void
+    #[Test]
+    public function resolveThrowsForNonInstantiableClass(): void
     {
         $this->expectException(ClassResolutionException::class);
+        $this->expectExceptionMessageMatches('/not instantiable/');
 
         $this->resolver->resolve(NonInstantiableClass::class);
     }
 
-    public function testResolveThrowsExceptionForNonExistsClass(): void
+    #[Test]
+    public function resolveThrowsForNonExistentClass(): void
     {
         $this->expectException(ClassResolutionException::class);
+        $this->expectExceptionMessageMatches('/not a valid resolvable class/');
 
-        $this->resolver->resolve('NotFoundClass');
+        $this->resolver->resolve('Nonexistent\\ClassName');
     }
 }

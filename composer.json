@@ -1,11 +1,13 @@
 {
     "name": "temant/container",
-    "description": "A lightweight dependency injection container.",
+    "description": "A lightweight, PSR-11 compliant dependency injection container with autowiring.",
     "type": "library",
     "keywords": [
         "dependency injection",
         "container",
-        "psr-11"
+        "psr-11",
+        "autowiring",
+        "di"
     ],
     "authors": [
         {
@@ -14,6 +16,15 @@
         }
     ],
     "license": "MIT",
+    "require": {
+        "php": ">=8.2",
+        "psr/container": "^2.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.0",
+        "phpstan/phpstan": "^2.0",
+        "symfony/var-dumper": "^7.1"
+    },
     "autoload": {
         "psr-4": {
             "Temant\\Container\\": "Src/"
@@ -24,21 +35,16 @@
             "Tests\\Temant\\Container\\": "Tests/"
         }
     },
-    "require": {
-        "psr/container": "^2.0"
-    },
-    "require-dev": {
-        "symfony/var-dumper": "^7.1",
-        "phpunit/phpunit": "^12.0",
-        "phpstan/phpstan": "^2.0"
-    },
     "scripts": {
         "test": [
             "@phpunit",
             "@phpstan"
         ],
-        "phpunit": "vendor/bin/phpunit",
-        "phpstan": "vendor/bin/phpstan analyse src --level=max"
+        "phpunit": "vendor/bin/phpunit --no-coverage",
+        "phpstan": "vendor/bin/phpstan analyse"
+    },
+    "config": {
+        "sort-packages": true
     },
     "minimum-stability": "stable"
 }

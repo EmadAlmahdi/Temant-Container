@@ -9,44 +9,41 @@ use ReflectionMethod;
 use Temant\Container\Exception\ClassResolutionException;
 
 use function array_map;
+use function array_pop;
 use function class_exists;
 use function implode;
 use function in_array;
 
 /**
- * Resolves and instantiates a class by handling its constructor and dependencies.
+ * Resolves and instantiates a class by analyzing its constructor and injecting dependencies.
  *
- * This class is responsible for creating instances of classes by resolving their
- * constructors and injecting any necessary dependencies. It uses reflection to
- * analyze the constructor and parameter types, and it relies on a parameter resolver
- * to provide the actual values.
+ * Uses reflection to inspect the constructor, delegates parameter resolution to
+ * {@see ParameterResolver}, and maintains a resolving stack (by reference) to detect
+ * circular dependencies.
  */
-class ConstructorResolver
+final class ConstructorResolver
 {
     /**
-     * Constructor for the ConstructorResolver class.
-     *
-     * @param ParameterResolver $parameterResolver The parameter resolver used to resolve constructor parameters.
-     * @param array<class-string> $resolvingStack Reference to the current resolving stack to detect circular dependencies.
+     * @param ParameterResolver    $parameterResolver The resolver for individual constructor parameters.
+     * @param list<class-string> &$resolvingStack    Reference to the current resolving stack for circular dependency detection.
      */
     public function __construct(
         private readonly ParameterResolver $parameterResolver,
-        private array &$resolvingStack
+        private array &$resolvingStack,
     ) {
     }
 
     /**
-     * Resolves and instantiates a class based on its name.
+     * Resolves and instantiates a class by its fully qualified name.
      *
-     * This method checks if the class exists and is instantiable. If the class has a
-     * constructor, it resolves its dependencies and creates an instance of the class
-     * with those dependencies injected. If there is no constructor, it creates an
-     * instance with default arguments.
+     * Checks that the class exists and is instantiable, detects circular dependencies,
+     * resolves constructor parameters, and returns a new instance.
      *
-     * @param string $id The fully qualified class name to resolve.
-     * @return object The resolved instance of the class.
-     * @throws ClassResolutionException If the class cannot be instantiated, or if there is an error
-     *                                    resolving the class or its dependencies.
+     * @param class-string $id The fully qualified class name to resolve.
+     * @return object The newly created instance.
+     *
+     * @throws ClassResolutionException If the class does not exist, is not instantiable,
+     *                                  or has a circular dependency.
      */
     public function resolve(string $id): object
     {
@@ -69,11 +66,13 @@ class ConstructorResolver
             }
 
             $constructor = $reflectionClass->getConstructor();
+
             if ($constructor === null) {
                 return $reflectionClass->newInstance();
             }
 
             $dependencies = $this->resolveDependencies($constructor);
+
             return $reflectionClass->newInstanceArgs($dependencies);
         } finally {
             array_pop($this->resolvingStack);
@@ -81,17 +80,16 @@ class ConstructorResolver
     }
 
     /**
-     * Resolves the dependencies required by a constructor.
+     * Resolves all parameters of a constructor method.
      *
-     * This method retrieves the parameters of the constructor and uses the parameter
-     * resolver to resolve each parameter's value. It returns an array of resolved
-     * dependencies which are used to instantiate the class.
-     *
-     * @param ReflectionMethod $constructor The reflection of the constructor to resolve.
-     * @return array<mixed> The resolved dependencies for the constructor.
+     * @param ReflectionMethod $constructor The constructor reflection.
+     * @return list<mixed> The resolved dependency values.
      */
     private function resolveDependencies(ReflectionMethod $constructor): array
     {
-        return array_map($this->parameterResolver->resolveParameter(...), $constructor->getParameters());
+        return array_map(
+            $this->parameterResolver->resolveParameter(...),
+            $constructor->getParameters(),
+        );
     }
 }
