@@ -4,5 +4,4 @@ vendor
 .phpunit.result.cache
 coverage
 .git
-.github
 .phpstan-cache
