@@ -40,9 +40,6 @@ final class ParameterResolverTest extends TestCase
 
         $this->resolver = new ParameterResolver(
             $this->container,
-            $this->container->hasAutowiring(...),
-            $this->container->getContextualBinding(...),
-            $this->container->tagged(...),
             $this->resolvingStack,
         );
     }
@@ -110,9 +107,6 @@ final class ParameterResolverTest extends TestCase
         $stack = [];
         $resolver = new ParameterResolver(
             $container,
-            $container->hasAutowiring(...),
-            $container->getContextualBinding(...),
-            $container->tagged(...),
             $stack,
         );
 
@@ -140,9 +134,6 @@ final class ParameterResolverTest extends TestCase
         $stack = [];
         $resolver = new ParameterResolver(
             $container,
-            $container->hasAutowiring(...),
-            $container->getContextualBinding(...),
-            $container->tagged(...),
             $stack,
         );
 
@@ -168,9 +159,6 @@ final class ParameterResolverTest extends TestCase
         $stack = [];
         $resolver = new ParameterResolver(
             $container,
-            fn(): bool => false,
-            $container->getContextualBinding(...),
-            $container->tagged(...),
             $stack,
         );
 
@@ -225,9 +213,6 @@ final class ParameterResolverTest extends TestCase
         $stack = [];
         $resolver = new ParameterResolver(
             $container,
-            $container->hasAutowiring(...),
-            $container->getContextualBinding(...),
-            $container->tagged(...),
             $stack,
         );
 

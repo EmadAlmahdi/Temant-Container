@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Temant\Container;
 
 use Closure;
+use Temant\Container\Exception\ContainerException;
 
 /**
  * Fluent builder for contextual bindings.
@@ -16,7 +17,7 @@ use Closure;
  */
 final class ContextualBindingBuilder
 {
-    private string $abstract;
+    private ?string $abstract = null;
 
     /**
      * @param Container $container The container to register the binding on.
@@ -46,9 +47,15 @@ final class ContextualBindingBuilder
      *
      * @param string|Closure(ContainerInterface): object $concrete A class name or factory closure.
      * @return void
+     *
+     * @throws ContainerException If needs() was not called first.
      */
     public function give(string|Closure $concrete): void
     {
+        if ($this->abstract === null) {
+            throw new ContainerException('Cannot call give() before needs(). Use when()->needs()->give().');
+        }
+
         $this->container->addContextualBinding($this->consumer, $this->abstract, $concrete);
     }
 }

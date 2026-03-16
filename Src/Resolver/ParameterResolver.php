@@ -9,7 +9,7 @@ use ReflectionIntersectionType;
 use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionUnionType;
-use Temant\Container\ContainerInterface;
+use Temant\Container\Container;
 use Temant\Container\Exception\UnresolvableParameterException;
 
 use function class_exists;
@@ -43,17 +43,11 @@ use function end;
 final class ParameterResolver
 {
     /**
-     * @param ContainerInterface $container The container used for resolving dependencies.
-     * @param Closure(): bool $autowiringEnabled Lazy callback returning the current autowiring state.
-     * @param Closure(string, string): (string|Closure|null) $contextualResolver Resolves contextual bindings: fn(consumer, abstract) => concrete|null.
-     * @param Closure(string): list<object> $taggedResolver Resolves tagged services: fn(tag) => list<object>.
-     * @param list<class-string> $resolvingStack Reference to the resolving stack for contextual binding context.
+     * @param Container            $container      The container used for resolving dependencies.
+     * @param list<class-string> &$resolvingStack Reference to the resolving stack for contextual binding context.
      */
     public function __construct(
-        private readonly ContainerInterface $container,
-        private readonly Closure $autowiringEnabled,
-        private readonly Closure $contextualResolver,
-        private readonly Closure $taggedResolver,
+        private readonly Container $container,
         private array &$resolvingStack,
     ) {
     }
@@ -119,8 +113,7 @@ final class ParameterResolver
         $className = $type->getName();
 
         // 1) Check tagged services
-        /** @var list<object> $tagged */
-        $tagged = ($this->taggedResolver)($className);
+        $tagged = $this->container->tagged($className);
         if ($tagged !== []) {
             return $tagged;
         }
@@ -138,7 +131,7 @@ final class ParameterResolver
      * Resolves a parameter with an object (class/interface) type.
      *
      * @param ReflectionParameter $param The parameter reflection.
-     * @param ReflectionNamedType $type The named type reflection.
+     * @param ReflectionNamedType $type  The named type reflection.
      * @return mixed The resolved object instance, default value, or null.
      *
      * @throws UnresolvableParameterException If the object type cannot be resolved.
@@ -150,8 +143,7 @@ final class ParameterResolver
         // 0) Check contextual bindings
         if ($this->resolvingStack !== []) {
             $consumer = end($this->resolvingStack);
-            /** @var string|Closure|null $contextual */
-            $contextual = ($this->contextualResolver)($consumer, $className);
+            $contextual = $this->container->getContextualBinding($consumer, $className);
             if ($contextual !== null) {
                 if ($contextual instanceof Closure) {
                     return $contextual($this->container);
@@ -167,7 +159,7 @@ final class ParameterResolver
         }
 
         // 2) Autowire if enabled and class exists
-        if (($this->autowiringEnabled)() && class_exists($className)) {
+        if ($this->container->hasAutowiring() && class_exists($className)) {
             return $this->container->get($className);
         }
 

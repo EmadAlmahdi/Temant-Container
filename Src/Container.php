@@ -10,8 +10,15 @@ use Temant\Container\Exception\ContainerException;
 use Temant\Container\Exception\NotFoundException;
 use Temant\Container\Resolver\Resolver;
 
+use function array_keys;
+use function array_unique;
+use function array_values;
 use function class_exists;
+use function explode;
+use function in_array;
 use function is_object;
+use function is_string;
+use function str_contains;
 
 /**
  * PSR-11 compliant Dependency Injection Container with autowiring support.
@@ -55,6 +62,13 @@ class Container implements ContainerInterface
      * @var array<string, object>
      */
     private array $instances = [];
+
+    /**
+     * Lazy service factories, tracked separately from shared/instances.
+     *
+     * @var array<string, callable(ContainerInterface): object>
+     */
+    private array $lazyFactories = [];
 
     /**
      * Bindings/aliases mapping an abstract ID to a concrete target ID.
@@ -387,6 +401,8 @@ class Container implements ContainerInterface
      * @param string|Closure $concrete The concrete implementation (class name or factory).
      * @return void
      *
+     * @throws ContainerException If the container is frozen.
+     *
      * @internal Called by {@see ContextualBindingBuilder::give()}.
      */
     public function addContextualBinding(string $consumer, string $abstract, string|Closure $concrete): void
@@ -465,8 +481,8 @@ class Container implements ContainerInterface
      *
      * Multiple extenders can be registered per service; they are applied in order.
      *
-     * @param string                                        $id       The service identifier to extend.
-     * @param Closure(object, ContainerInterface): object $extender The decorator closure.
+     * @param string                                      $id       The service identifier to extend.
+     * @param Closure(object, ContainerInterface): object  $extender The decorator closure.
      * @return $this
      *
      * @throws ContainerException If the ID has no existing registration or container is frozen.
@@ -500,8 +516,8 @@ class Container implements ContainerInterface
      *       $obj->setLogger($c->get(LoggerInterface::class));
      *   });
      *
-     * @param string                                       $type     The interface/class name to match.
-     * @param Closure(object, ContainerInterface): void $callback The inflector callback.
+     * @param string                                     $type     The interface/class name to match.
+     * @param Closure(object, ContainerInterface): void  $callback The inflector callback.
      * @return $this
      *
      * @throws ContainerException If the container is frozen.
@@ -526,8 +542,8 @@ class Container implements ContainerInterface
      * If a string ID is provided, the callback fires only for that ID.
      * If a Closure is provided directly, it fires for every resolution (global).
      *
-     * @param string|Closure(object, ContainerInterface): void $idOrCallback Service ID or global callback.
-     * @param (Closure(object, ContainerInterface): void)|null $callback     Callback when $idOrCallback is a string.
+     * @param string|Closure(object, ContainerInterface): void  $idOrCallback Service ID or global callback.
+     * @param (Closure(object, ContainerInterface): void)|null  $callback     Callback when $idOrCallback is a string.
      * @return $this
      *
      * @throws ContainerException If the container is frozen.
@@ -553,8 +569,8 @@ class Container implements ContainerInterface
      * If a string ID is provided, the callback fires only for that ID.
      * If a Closure is provided directly, it fires for every resolution (global).
      *
-     * @param string|Closure(object, ContainerInterface): void $idOrCallback Service ID or global callback.
-     * @param (Closure(object, ContainerInterface): void)|null $callback     Callback when $idOrCallback is a string.
+     * @param string|Closure(object, ContainerInterface): void  $idOrCallback Service ID or global callback.
+     * @param (Closure(object, ContainerInterface): void)|null  $callback     Callback when $idOrCallback is a string.
      * @return $this
      *
      * @throws ContainerException If the container is frozen.
@@ -659,10 +675,7 @@ class Container implements ContainerInterface
                 $obj = ($this->shared[$id])($this);
                 $this->guardObjectReturn($obj, $id, 'Shared');
 
-                $obj = $this->applyExtenders($id, $obj);
-                $obj = $this->applyInflectors($obj);
-                $this->fireResolvingCallbacks($id, $obj);
-                $this->fireAfterResolvingCallbacks($id, $obj);
+                $obj = $this->finalizeService($id, $obj);
 
                 return $this->instances[$id] = $obj;
             }
@@ -672,12 +685,7 @@ class Container implements ContainerInterface
                 $obj = ($this->factories[$id])($this);
                 $this->guardObjectReturn($obj, $id, 'Factory');
 
-                $obj = $this->applyExtenders($id, $obj);
-                $obj = $this->applyInflectors($obj);
-                $this->fireResolvingCallbacks($id, $obj);
-                $this->fireAfterResolvingCallbacks($id, $obj);
-
-                return $obj;
+                return $this->finalizeService($id, $obj);
             }
 
             // 4) Parent container
@@ -688,10 +696,7 @@ class Container implements ContainerInterface
             // 5) Autowire
             if ($this->autowiringEnabled && class_exists($id)) {
                 $obj = $this->resolver->resolve($id);
-                $obj = $this->applyExtenders($id, $obj);
-                $obj = $this->applyInflectors($obj);
-                $this->fireResolvingCallbacks($id, $obj);
-                $this->fireAfterResolvingCallbacks($id, $obj);
+                $obj = $this->finalizeService($id, $obj);
 
                 if ($this->cacheAutowire) {
                     $this->instances[$id] = $obj;
@@ -700,10 +705,8 @@ class Container implements ContainerInterface
                 return $obj;
             }
 
-            throw new NotFoundException();
-        } catch (NotFoundException $e) {
-            throw $e::forEntry($id);
-        } catch (ContainerException $e) {
+            throw NotFoundException::forEntry($id);
+        } catch (NotFoundException|ContainerException $e) {
             throw $e;
         } catch (Exception $e) {
             throw new ContainerException("Error resolving entry '{$id}'.", 0, $e);
@@ -744,6 +747,8 @@ class Container implements ContainerInterface
      * Unlike {@see get()}, this always invokes the factory or autowires a new instance.
      * Accepts named parameter overrides for constructor arguments.
      *
+     * Events (resolving/afterResolving), extenders, and inflectors are all applied.
+     *
      * @param string               $id         The entry identifier.
      * @param array<string, mixed> $parameters Named parameter overrides for the constructor.
      * @return object The newly created instance.
@@ -762,10 +767,7 @@ class Container implements ContainerInterface
                 $obj = $factory($this);
                 $this->guardObjectReturn($obj, $id, 'Make');
 
-                $obj = $this->applyExtenders($id, $obj);
-                $obj = $this->applyInflectors($obj);
-
-                return $obj;
+                return $this->finalizeService($id, $obj);
             }
 
             // Parent container
@@ -776,16 +778,12 @@ class Container implements ContainerInterface
             // Autowire with parameter overrides
             if ($this->autowiringEnabled && class_exists($id)) {
                 $obj = $this->resolver->resolve($id, $parameters);
-                $obj = $this->applyExtenders($id, $obj);
-                $obj = $this->applyInflectors($obj);
 
-                return $obj;
+                return $this->finalizeService($id, $obj);
             }
 
-            throw new NotFoundException();
-        } catch (NotFoundException $e) {
-            throw $e::forEntry($id);
-        } catch (ContainerException $e) {
+            throw NotFoundException::forEntry($id);
+        } catch (NotFoundException|ContainerException $e) {
             throw $e;
         } catch (Exception $e) {
             throw new ContainerException("Error making entry '{$id}'.", 0, $e);
@@ -841,7 +839,8 @@ class Container implements ContainerInterface
         $this->guardAgainstFrozen();
         $this->guardAgainstDuplicate($id);
 
-        $this->instances[$id] = new LazyProxy(fn(): object => $this->invokeLazyFactory($concrete, $id));
+        $this->lazyFactories[$id] = $concrete;
+        $this->instances[$id] = $this->buildLazyProxy($id, $concrete);
 
         return $this;
     }
@@ -909,6 +908,11 @@ class Container implements ContainerInterface
             $removed = true;
         }
 
+        if (isset($this->lazyFactories[$id])) {
+            unset($this->lazyFactories[$id]);
+            $removed = true;
+        }
+
         if (isset($this->bindings[$id])) {
             unset($this->bindings[$id]);
             $removed = true;
@@ -934,6 +938,7 @@ class Container implements ContainerInterface
         $this->shared = [];
         $this->factories = [];
         $this->instances = [];
+        $this->lazyFactories = [];
         $this->bindings = [];
         $this->contextualBindings = [];
         $this->tags = [];
@@ -954,11 +959,18 @@ class Container implements ContainerInterface
      * Useful in tests or long-running workers (e.g. Swoole, RoadRunner) to force
      * singletons to be recreated on the next {@see get()} call.
      *
+     * Lazy proxies are rebuilt (not destroyed) so they still defer correctly.
+     *
      * @return void
      */
     public function flushInstances(): void
     {
         $this->instances = [];
+
+        // Rebuild lazy proxies so they defer correctly instead of being lost
+        foreach ($this->lazyFactories as $id => $factory) {
+            $this->instances[$id] = $this->buildLazyProxy($id, $factory);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1119,7 +1131,7 @@ class Container implements ContainerInterface
      * @return array{
      *     id: string,
      *     resolvedId: string,
-     *     type: 'shared'|'factory'|'instance'|null,
+     *     type: 'shared'|'factory'|'instance'|'lazy'|null,
      *     binding: string|null,
      *     tags: list<string>,
      *     hasExtenders: bool,
@@ -1130,7 +1142,9 @@ class Container implements ContainerInterface
         $resolved = $this->resolveBinding($id);
 
         $type = null;
-        if (isset($this->shared[$resolved])) {
+        if (isset($this->lazyFactories[$resolved])) {
+            $type = 'lazy';
+        } elseif (isset($this->shared[$resolved])) {
             $type = 'shared';
         } elseif (isset($this->factories[$resolved])) {
             $type = 'factory';
@@ -1190,7 +1204,7 @@ class Container implements ContainerInterface
     }
 
     /**
-     * Checks if an ID has any existing registration (shared, factory, or instance).
+     * Checks if an ID has any existing registration (shared, factory, instance, or lazy).
      *
      * @param string $id The entry identifier.
      * @return bool
@@ -1199,7 +1213,8 @@ class Container implements ContainerInterface
     {
         return isset($this->shared[$id])
             || isset($this->factories[$id])
-            || isset($this->instances[$id]);
+            || isset($this->instances[$id])
+            || isset($this->lazyFactories[$id]);
     }
 
     /**
@@ -1236,7 +1251,7 @@ class Container implements ContainerInterface
      *
      * @param mixed  $value The returned value to check.
      * @param string $id    The service identifier (for the error message).
-     * @param string $type  The registration type label ("Shared", "Factory", or "Make").
+     * @param string $type  The registration type label ("Shared", "Factory", "Make", or "Lazy").
      * @return void
      *
      * @throws ContainerException If the value is not an object.
@@ -1246,6 +1261,25 @@ class Container implements ContainerInterface
         if (!is_object($value)) {
             throw new ContainerException("{$type} entry '{$id}' must return an object, got " . get_debug_type($value) . '.');
         }
+    }
+
+    /**
+     * Applies the full post-resolution pipeline to a freshly created service.
+     *
+     * Pipeline order: extenders -> inflectors -> resolving callbacks -> after-resolving callbacks.
+     *
+     * @param string $id  The service identifier.
+     * @param object $obj The resolved service instance.
+     * @return object The finalized service instance (possibly decorated by extenders).
+     */
+    private function finalizeService(string $id, object $obj): object
+    {
+        $obj = $this->applyExtenders($id, $obj);
+        $this->applyInflectors($obj);
+        $this->fireResolvingCallbacks($id, $obj);
+        $this->fireAfterResolvingCallbacks($id, $obj);
+
+        return $obj;
     }
 
     /**
@@ -1272,9 +1306,9 @@ class Container implements ContainerInterface
      * Applies all matching inflectors to a resolved service.
      *
      * @param object $obj The resolved service instance.
-     * @return object The (possibly modified) service instance.
+     * @return void
      */
-    private function applyInflectors(object $obj): object
+    private function applyInflectors(object $obj): void
     {
         foreach ($this->inflectors as $type => $callbacks) {
             if ($obj instanceof $type) {
@@ -1283,8 +1317,6 @@ class Container implements ContainerInterface
                 }
             }
         }
-
-        return $obj;
     }
 
     /**
@@ -1324,20 +1356,19 @@ class Container implements ContainerInterface
     }
 
     /**
-     * Invokes a lazy factory, guarding its return type.
+     * Creates a LazyProxy for the given factory.
      *
-     * @param callable(ContainerInterface): object $factory The lazy factory.
-     * @param string                                $id      The service identifier.
-     * @return object
+     * @param string                              $id      The service identifier.
+     * @param callable(ContainerInterface): object $factory The factory to wrap.
+     * @return LazyProxy
      */
-    private function invokeLazyFactory(callable $factory, string $id): object
+    private function buildLazyProxy(string $id, callable $factory): LazyProxy
     {
-        $obj = $factory($this);
-        $this->guardObjectReturn($obj, $id, 'Lazy');
+        return new LazyProxy(function () use ($factory, $id): object {
+            $obj = $factory($this);
+            $this->guardObjectReturn($obj, $id, 'Lazy');
 
-        $obj = $this->applyExtenders($id, $obj);
-        $obj = $this->applyInflectors($obj);
-
-        return $obj;
+            return $this->finalizeService($id, $obj);
+        });
     }
 }

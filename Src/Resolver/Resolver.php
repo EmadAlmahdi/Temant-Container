@@ -7,7 +7,6 @@ namespace Temant\Container\Resolver;
 use Closure;
 use ReflectionFunction;
 use Temant\Container\Container;
-use Temant\Container\ContainerInterface;
 
 use function array_key_exists;
 
@@ -17,6 +16,8 @@ use function array_key_exists;
  * Delegates to {@see ConstructorResolver} for class instantiation and
  * {@see ParameterResolver} for individual parameter resolution. Maintains
  * a resolving stack to detect circular dependencies.
+ *
+ * @internal This is an internal component of the container — not part of the public API.
  */
 final class Resolver
 {
@@ -31,23 +32,12 @@ final class Resolver
     private array $resolvingStack = [];
 
     /**
-     * @param ContainerInterface $container The container used for resolving dependencies.
+     * @param Container $container The container used for resolving dependencies.
      */
-    public function __construct(private readonly ContainerInterface $container)
+    public function __construct(private readonly Container $container)
     {
-        $contextualResolver = ($container instanceof Container)
-            ? $container->getContextualBinding(...)
-            : static fn(): null => null;
-
-        $taggedResolver = ($container instanceof Container)
-            ? $container->tagged(...)
-            : static fn(): array => [];
-
         $this->parameterResolver = new ParameterResolver(
             $this->container,
-            $this->container->hasAutowiring(...),
-            $contextualResolver,
-            $taggedResolver,
             $this->resolvingStack,
         );
 
