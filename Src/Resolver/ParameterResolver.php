@@ -13,37 +13,48 @@ use Temant\Container\ContainerInterface;
 use Temant\Container\Exception\UnresolvableParameterException;
 
 use function class_exists;
+use function end;
 
 /**
  * Resolves constructor/callable parameters using reflection and container rules.
  *
  * Resolution rules (in order):
  *
- * - Variadic parameters: not supported (throws).
  * - Untyped parameters: not resolvable (throws).
  * - Union/Intersection types: not supported (throws).
  *
  * For object types (class/interface):
- *   1. If the container has the type registered, use it.
- *   2. If autowiring is enabled and the class exists, resolve via the container.
- *   3. If nullable, return null.
- *   4. If a default value exists, return it.
- *   5. Otherwise, throw.
+ *   1. Check contextual bindings for the current consumer.
+ *   2. If the container has the type registered, use it.
+ *   3. If autowiring is enabled and the class exists, resolve via the container.
+ *   4. If nullable, return null.
+ *   5. If a default value exists, return it.
+ *   6. Otherwise, throw.
  *
  * For built-in types (string, int, bool, array, etc.):
  *   1. If a default value exists, return it.
  *   2. If nullable, return null.
  *   3. Otherwise, throw.
+ *
+ * Variadic parameters:
+ *   - Resolved via tagged services or single-instance resolution.
+ *   - Gracefully returns empty if unresolvable (variadic allows 0 args).
  */
 final class ParameterResolver
 {
     /**
-     * @param ContainerInterface       $container           The container used for resolving dependencies.
-     * @param Closure(): bool $autowiringEnabled   Lazy callback returning the current autowiring state.
+     * @param ContainerInterface $container The container used for resolving dependencies.
+     * @param Closure(): bool $autowiringEnabled Lazy callback returning the current autowiring state.
+     * @param Closure(string, string): (string|Closure|null) $contextualResolver Resolves contextual bindings: fn(consumer, abstract) => concrete|null.
+     * @param Closure(string): list<object> $taggedResolver Resolves tagged services: fn(tag) => list<object>.
+     * @param list<class-string> $resolvingStack Reference to the resolving stack for contextual binding context.
      */
     public function __construct(
         private readonly ContainerInterface $container,
         private readonly Closure $autowiringEnabled,
+        private readonly Closure $contextualResolver,
+        private readonly Closure $taggedResolver,
+        private array &$resolvingStack,
     ) {
     }
 
@@ -87,10 +98,47 @@ final class ParameterResolver
     }
 
     /**
+     * Resolves a variadic parameter to an array of values.
+     *
+     * For typed variadic parameters (e.g., Foo ...$foos):
+     *   1. Check tagged services for the type name.
+     *   2. Try resolving a single instance.
+     *   3. Return empty array if unresolvable.
+     *
+     * @param ReflectionParameter $param The variadic parameter reflection.
+     * @return list<mixed> The resolved values.
+     */
+    public function resolveVariadicParameter(ReflectionParameter $param): array
+    {
+        $type = $param->getType();
+
+        if (!$type instanceof ReflectionNamedType || $type->isBuiltin()) {
+            return [];
+        }
+
+        $className = $type->getName();
+
+        // 1) Check tagged services
+        /** @var list<object> $tagged */
+        $tagged = ($this->taggedResolver)($className);
+        if ($tagged !== []) {
+            return $tagged;
+        }
+
+        // 2) Try single resolution
+        if ($this->container->has($className)) {
+            return [$this->container->get($className)];
+        }
+
+        // 3) Variadic allows 0 args
+        return [];
+    }
+
+    /**
      * Resolves a parameter with an object (class/interface) type.
      *
      * @param ReflectionParameter $param The parameter reflection.
-     * @param ReflectionNamedType $type  The named type reflection.
+     * @param ReflectionNamedType $type The named type reflection.
      * @return mixed The resolved object instance, default value, or null.
      *
      * @throws UnresolvableParameterException If the object type cannot be resolved.
@@ -98,6 +146,20 @@ final class ParameterResolver
     private function resolveObjectType(ReflectionParameter $param, ReflectionNamedType $type): mixed
     {
         $className = $type->getName();
+
+        // 0) Check contextual bindings
+        if ($this->resolvingStack !== []) {
+            $consumer = end($this->resolvingStack);
+            /** @var string|Closure|null $contextual */
+            $contextual = ($this->contextualResolver)($consumer, $className);
+            if ($contextual !== null) {
+                if ($contextual instanceof Closure) {
+                    return $contextual($this->container);
+                }
+
+                return $this->container->get($contextual);
+            }
+        }
 
         // 1) Explicitly registered in the container?
         if ($this->container->has($className)) {

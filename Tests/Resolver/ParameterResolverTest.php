@@ -30,6 +30,8 @@ final class ParameterResolverTest extends TestCase
     private Container $container;
     private ParameterResolver $resolver;
 
+    private array $resolvingStack = [];
+
     protected function setUp(): void
     {
         $this->container = new Container();
@@ -39,6 +41,9 @@ final class ParameterResolverTest extends TestCase
         $this->resolver = new ParameterResolver(
             $this->container,
             $this->container->hasAutowiring(...),
+            $this->container->getContextualBinding(...),
+            $this->container->tagged(...),
+            $this->resolvingStack,
         );
     }
 
@@ -102,7 +107,14 @@ final class ParameterResolverTest extends TestCase
         $this->expectExceptionMessageMatches('/not registered/');
 
         $container = new Container(autowiringEnabled: false);
-        $resolver = new ParameterResolver($container, $container->hasAutowiring(...));
+        $stack = [];
+        $resolver = new ParameterResolver(
+            $container,
+            $container->hasAutowiring(...),
+            $container->getContextualBinding(...),
+            $container->tagged(...),
+            $stack,
+        );
 
         $param = $this->getFirstConstructorParam(Baz::class);
         $resolver->resolveParameter($param);
@@ -125,7 +137,14 @@ final class ParameterResolverTest extends TestCase
     public function resolvesNullableObjectAsNullWhenNotResolvable(): void
     {
         $container = new Container(autowiringEnabled: false);
-        $resolver = new ParameterResolver($container, $container->hasAutowiring(...));
+        $stack = [];
+        $resolver = new ParameterResolver(
+            $container,
+            $container->hasAutowiring(...),
+            $container->getContextualBinding(...),
+            $container->tagged(...),
+            $stack,
+        );
 
         $param = $this->getFirstConstructorParam(ConstructorWithNullableObject::class);
         $value = $resolver->resolveParameter($param);
@@ -146,7 +165,14 @@ final class ParameterResolverTest extends TestCase
     public function resolvesDefaultObjectWhenNotRegistered(): void
     {
         $container = new Container(autowiringEnabled: false);
-        $resolver = new ParameterResolver($container, fn(): bool => false);
+        $stack = [];
+        $resolver = new ParameterResolver(
+            $container,
+            fn(): bool => false,
+            $container->getContextualBinding(...),
+            $container->tagged(...),
+            $stack,
+        );
 
         $param = $this->getFirstConstructorParam(ConstructorWithDefaultObject::class);
         $value = $resolver->resolveParameter($param);
@@ -196,7 +222,14 @@ final class ParameterResolverTest extends TestCase
     public function exceptionsArePsr11Compliant(): void
     {
         $container = new Container(autowiringEnabled: false);
-        $resolver = new ParameterResolver($container, $container->hasAutowiring(...));
+        $stack = [];
+        $resolver = new ParameterResolver(
+            $container,
+            $container->hasAutowiring(...),
+            $container->getContextualBinding(...),
+            $container->tagged(...),
+            $stack,
+        );
 
         try {
             $param = $this->getFirstConstructorParam(Baz::class);

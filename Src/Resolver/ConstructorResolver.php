@@ -8,11 +8,13 @@ use ReflectionClass;
 use ReflectionMethod;
 use Temant\Container\Exception\ClassResolutionException;
 
-use function array_map;
+use function array_key_exists;
 use function array_pop;
+use function array_push;
 use function class_exists;
 use function implode;
 use function in_array;
+use function is_array;
 
 /**
  * Resolves and instantiates a class by analyzing its constructor and injecting dependencies.
@@ -39,13 +41,14 @@ final class ConstructorResolver
      * Checks that the class exists and is instantiable, detects circular dependencies,
      * resolves constructor parameters, and returns a new instance.
      *
-     * @param class-string $id The fully qualified class name to resolve.
+     * @param class-string         $id        The fully qualified class name to resolve.
+     * @param array<string, mixed> $overrides Named parameter overrides for the constructor.
      * @return object The newly created instance.
      *
      * @throws ClassResolutionException If the class does not exist, is not instantiable,
      *                                  or has a circular dependency.
      */
-    public function resolve(string $id): object
+    public function resolve(string $id, array $overrides = []): object
     {
         if (!class_exists($id)) {
             throw ClassResolutionException::classNotFound($id);
@@ -71,7 +74,7 @@ final class ConstructorResolver
                 return $reflectionClass->newInstance();
             }
 
-            $dependencies = $this->resolveDependencies($constructor);
+            $dependencies = $this->resolveDependencies($constructor, $overrides);
 
             return $reflectionClass->newInstanceArgs($dependencies);
         } finally {
@@ -82,14 +85,38 @@ final class ConstructorResolver
     /**
      * Resolves all parameters of a constructor method.
      *
-     * @param ReflectionMethod $constructor The constructor reflection.
+     * Handles named overrides and variadic parameters.
+     *
+     * @param ReflectionMethod     $constructor The constructor reflection.
+     * @param array<string, mixed> $overrides   Named parameter overrides.
      * @return list<mixed> The resolved dependency values.
      */
-    private function resolveDependencies(ReflectionMethod $constructor): array
+    private function resolveDependencies(ReflectionMethod $constructor, array $overrides = []): array
     {
-        return array_map(
-            $this->parameterResolver->resolveParameter(...),
-            $constructor->getParameters(),
-        );
+        $args = [];
+
+        foreach ($constructor->getParameters() as $param) {
+            $name = $param->getName();
+
+            // Named override
+            if (array_key_exists($name, $overrides)) {
+                if ($param->isVariadic() && is_array($overrides[$name])) {
+                    array_push($args, ...$overrides[$name]);
+                } else {
+                    $args[] = $overrides[$name];
+                }
+                continue;
+            }
+
+            // Variadic parameter
+            if ($param->isVariadic()) {
+                array_push($args, ...$this->parameterResolver->resolveVariadicParameter($param));
+                continue;
+            }
+
+            $args[] = $this->parameterResolver->resolveParameter($param);
+        }
+
+        return $args;
     }
 }

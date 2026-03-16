@@ -11,7 +11,7 @@ use Psr\Container\ContainerInterface as PsrContainerInterface;
  * beyond the PSR-11 contract.
  *
  * Extends PSR-11's ContainerInterface with autowiring awareness, callable
- * invocation, and service removal.
+ * invocation, fresh instance creation, and service removal.
  */
 interface ContainerInterface extends PsrContainerInterface
 {
@@ -25,11 +25,25 @@ interface ContainerInterface extends PsrContainerInterface
     /**
      * Invokes a callable while resolving its type-hinted parameters from the container.
      *
-     * @param callable             $callable       The callable to invoke.
+     * Supports closures, array callables, and 'Class@method' string syntax.
+     *
+     * @param callable|string      $callable       The callable to invoke.
      * @param array<string, mixed> $namedOverrides Override values keyed by parameter name.
      * @return mixed The return value of the callable.
      */
-    public function call(callable $callable, array $namedOverrides = []): mixed;
+    public function call(callable|string $callable, array $namedOverrides = []): mixed;
+
+    /**
+     * Creates a fresh instance of a service, bypassing singleton cache.
+     *
+     * Unlike {@see get()}, this always invokes the factory or autowires a new instance.
+     * Accepts named parameter overrides for constructor arguments.
+     *
+     * @param string               $id         The entry identifier.
+     * @param array<string, mixed> $parameters Named parameter overrides for the constructor.
+     * @return object The newly created instance.
+     */
+    public function make(string $id, array $parameters = []): object;
 
     /**
      * Removes an entry from the container.

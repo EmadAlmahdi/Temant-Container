@@ -6,6 +6,7 @@ namespace Temant\Container\Resolver;
 
 use Closure;
 use ReflectionFunction;
+use Temant\Container\Container;
 use Temant\Container\ContainerInterface;
 
 use function array_key_exists;
@@ -34,9 +35,20 @@ final class Resolver
      */
     public function __construct(private readonly ContainerInterface $container)
     {
+        $contextualResolver = ($container instanceof Container)
+            ? $container->getContextualBinding(...)
+            : static fn(): null => null;
+
+        $taggedResolver = ($container instanceof Container)
+            ? $container->tagged(...)
+            : static fn(): array => [];
+
         $this->parameterResolver = new ParameterResolver(
             $this->container,
             $this->container->hasAutowiring(...),
+            $contextualResolver,
+            $taggedResolver,
+            $this->resolvingStack,
         );
 
         $this->constructorResolver = new ConstructorResolver(
@@ -48,14 +60,15 @@ final class Resolver
     /**
      * Resolves and instantiates a class by its fully qualified name.
      *
-     * @param class-string $id The class name to resolve.
+     * @param class-string         $id         The class name to resolve.
+     * @param array<string, mixed> $overrides  Named parameter overrides for the constructor.
      * @return object The resolved instance.
      *
      * @throws \Temant\Container\Exception\ClassResolutionException If the class cannot be resolved.
      */
-    public function resolve(string $id): object
+    public function resolve(string $id, array $overrides = []): object
     {
-        return $this->constructorResolver->resolve($id);
+        return $this->constructorResolver->resolve($id, $overrides);
     }
 
     /**

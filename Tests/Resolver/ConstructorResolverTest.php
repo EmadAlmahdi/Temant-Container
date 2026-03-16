@@ -22,12 +22,15 @@ final class ConstructorResolverTest extends TestCase
     {
         $container = new Container();
 
+        $stack = [];
         $parameterResolver = new ParameterResolver(
             $container,
             $container->hasAutowiring(...),
+            $container->getContextualBinding(...),
+            $container->tagged(...),
+            $stack,
         );
 
-        $stack = [];
         $this->resolver = new ConstructorResolver($parameterResolver, $stack);
     }
 
