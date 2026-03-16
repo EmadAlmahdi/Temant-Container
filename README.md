@@ -1,5 +1,13 @@
 # Temant Container
 
+[![CI](https://github.com/EmadAlmahdi/Temant-Container/actions/workflows/ci.yml/badge.svg)](https://github.com/EmadAlmahdi/Temant-Container/actions/workflows/ci.yml)
+[![Latest Stable Version](https://poser.pugx.org/temant/container/v/stable)](https://packagist.org/packages/temant/container)
+[![Total Downloads](https://poser.pugx.org/temant/container/downloads)](https://packagist.org/packages/temant/container)
+[![License](https://poser.pugx.org/temant/container/license)](https://packagist.org/packages/temant/container)
+[![PHP Version Require](https://poser.pugx.org/temant/container/require/php)](https://packagist.org/packages/temant/container)
+[![PHPStan Level](https://img.shields.io/badge/PHPStan-level%20max-brightgreen)](https://phpstan.org/)
+[![PSR-11](https://img.shields.io/badge/PSR--11-compliant-blue)](https://www.php-fig.org/psr/psr-11/)
+
 A lightweight, [PSR-11](https://www.php-fig.org/psr/psr-11/) compliant dependency injection container for PHP 8.2+ with autowiring support.
 
 ## Features
