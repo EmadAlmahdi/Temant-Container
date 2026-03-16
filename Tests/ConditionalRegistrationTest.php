@@ -8,7 +8,6 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Temant\Container\Container;
 use Tests\Temant\Container\Fixtures\Foo;
-use Tests\Temant\Container\Fixtures\SomeClass;
 
 final class ConditionalRegistrationTest extends TestCase
 {

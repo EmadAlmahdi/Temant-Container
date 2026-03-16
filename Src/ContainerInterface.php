@@ -27,7 +27,7 @@ interface ContainerInterface extends PsrContainerInterface
      *
      * Supports closures, array callables, and 'Class@method' string syntax.
      *
-     * @param callable|string      $callable       The callable to invoke.
+     * @param callable|string $callable The callable to invoke.
      * @param array<string, mixed> $namedOverrides Override values keyed by parameter name.
      * @return mixed The return value of the callable.
      */
@@ -39,7 +39,7 @@ interface ContainerInterface extends PsrContainerInterface
      * Unlike {@see get()}, this always invokes the factory or autowires a new instance.
      * Accepts named parameter overrides for constructor arguments.
      *
-     * @param string               $id         The entry identifier.
+     * @param string $id The entry identifier.
      * @param array<string, mixed> $parameters Named parameter overrides for the constructor.
      * @return object The newly created instance.
      */

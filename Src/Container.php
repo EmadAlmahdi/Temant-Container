@@ -162,7 +162,7 @@ class Container implements ContainerInterface
 
     /**
      * @param bool $autowiringEnabled Whether autowiring is enabled (default: true).
-     * @param bool $cacheAutowire    Whether autowired instances are cached as singletons (default: true).
+     * @param bool $cacheAutowire Whether autowired instances are cached as singletons (default: true).
      */
     public function __construct(
         private bool $autowiringEnabled = true,
@@ -198,7 +198,7 @@ class Container implements ContainerInterface
      * The factory is invoked once on first {@see get()}, and the result is cached
      * for all subsequent calls.
      *
-     * @param string                              $id       The service identifier (typically a class-string).
+     * @param string $id The service identifier (typically a class-string).
      * @param callable(ContainerInterface): object $concrete Factory returning the service instance.
      * @return $this
      *
@@ -217,7 +217,7 @@ class Container implements ContainerInterface
     /**
      * Alias for {@see set()} -- explicit naming for readability.
      *
-     * @param string                              $id       The service identifier.
+     * @param string $id The service identifier.
      * @param callable(ContainerInterface): object $concrete Factory returning the service instance.
      * @return $this
      *
@@ -231,7 +231,7 @@ class Container implements ContainerInterface
     /**
      * Registers a factory entry that creates a new instance on every {@see get()} call.
      *
-     * @param string                              $id       The service identifier.
+     * @param string $id The service identifier.
      * @param callable(ContainerInterface): object $concrete Factory returning the service instance.
      * @return $this
      *
@@ -291,7 +291,7 @@ class Container implements ContainerInterface
     /**
      * Alias for {@see setIf()} -- explicit naming for readability.
      *
-     * @param string                              $id       The service identifier.
+     * @param string $id The service identifier.
      * @param callable(ContainerInterface): object $concrete Factory returning the service instance.
      * @return $this
      */
@@ -303,7 +303,7 @@ class Container implements ContainerInterface
     /**
      * Registers a factory entry only if the ID is not already registered.
      *
-     * @param string                              $id       The service identifier.
+     * @param string $id The service identifier.
      * @param callable(ContainerInterface): object $concrete Factory returning the service instance.
      * @return $this
      */
@@ -319,7 +319,7 @@ class Container implements ContainerInterface
     /**
      * Registers an instance only if the ID is not already registered.
      *
-     * @param string $id     The service identifier.
+     * @param string $id The service identifier.
      * @param object $object The pre-created instance.
      * @return $this
      */
@@ -343,7 +343,7 @@ class Container implements ContainerInterface
      * Supports chained bindings (A -> B -> C).
      *
      * @param string $abstract The abstract service identifier.
-     * @param string $target   The concrete target identifier.
+     * @param string $target The concrete target identifier.
      * @return $this
      *
      * @throws ContainerException If the container is frozen.
@@ -362,7 +362,7 @@ class Container implements ContainerInterface
      *
      * Alias for {@see bind()} -- semantic naming for readability.
      *
-     * @param string $alias  The alias identifier.
+     * @param string $alias The alias identifier.
      * @param string $target The target identifier the alias points to.
      * @return $this
      *
@@ -396,8 +396,8 @@ class Container implements ContainerInterface
     /**
      * Registers a contextual binding.
      *
-     * @param string         $consumer The consuming class.
-     * @param string         $abstract The abstract type/interface.
+     * @param string $consumer The consuming class.
+     * @param string $abstract The abstract type/interface.
      * @param string|Closure $concrete The concrete implementation (class name or factory).
      * @return void
      *
@@ -433,7 +433,7 @@ class Container implements ContainerInterface
     /**
      * Tags a service ID with a group name.
      *
-     * @param string $id  The service identifier to tag.
+     * @param string $id The service identifier to tag.
      * @param string $tag The tag name.
      * @return $this
      *
@@ -481,7 +481,7 @@ class Container implements ContainerInterface
      *
      * Multiple extenders can be registered per service; they are applied in order.
      *
-     * @param string                                      $id       The service identifier to extend.
+     * @param string $id The service identifier to extend.
      * @param Closure(object, ContainerInterface): object  $extender The decorator closure.
      * @return $this
      *
@@ -516,7 +516,7 @@ class Container implements ContainerInterface
      *       $obj->setLogger($c->get(LoggerInterface::class));
      *   });
      *
-     * @param string                                     $type     The interface/class name to match.
+     * @param string $type The interface/class name to match.
      * @param Closure(object, ContainerInterface): void  $callback The inflector callback.
      * @return $this
      *
@@ -706,7 +706,7 @@ class Container implements ContainerInterface
             }
 
             throw NotFoundException::forEntry($id);
-        } catch (NotFoundException|ContainerException $e) {
+        } catch (NotFoundException | ContainerException $e) {
             throw $e;
         } catch (Exception $e) {
             throw new ContainerException("Error resolving entry '{$id}'.", 0, $e);
@@ -749,7 +749,7 @@ class Container implements ContainerInterface
      *
      * Events (resolving/afterResolving), extenders, and inflectors are all applied.
      *
-     * @param string               $id         The entry identifier.
+     * @param string $id The entry identifier.
      * @param array<string, mixed> $parameters Named parameter overrides for the constructor.
      * @return object The newly created instance.
      *
@@ -783,7 +783,7 @@ class Container implements ContainerInterface
             }
 
             throw NotFoundException::forEntry($id);
-        } catch (NotFoundException|ContainerException $e) {
+        } catch (NotFoundException | ContainerException $e) {
             throw $e;
         } catch (Exception $e) {
             throw new ContainerException("Error making entry '{$id}'.", 0, $e);
@@ -800,7 +800,7 @@ class Container implements ContainerInterface
      * Supports closures, array callables, and 'Class@method' string syntax:
      *   $container->call('App\\Controller\\UserController@show');
      *
-     * @param callable|string      $callable       The callable to invoke.
+     * @param callable|string $callable The callable to invoke.
      * @param array<string, mixed> $namedOverrides Override values keyed by parameter name.
      * @return mixed The return value of the callable.
      */
@@ -828,7 +828,7 @@ class Container implements ContainerInterface
      * The factory is wrapped in a {@see LazyProxy} that defers instantiation
      * until the first method call on the proxy.
      *
-     * @param string                              $id       The service identifier.
+     * @param string $id The service identifier.
      * @param callable(ContainerInterface): object $concrete Factory returning the service instance.
      * @return $this
      *
@@ -1340,7 +1340,7 @@ class Container implements ContainerInterface
     /**
      * Fires ID-specific and global after-resolving callbacks.
      *
-     * @param string $id  The service identifier.
+     * @param string $id The service identifier.
      * @param object $obj The resolved service instance.
      * @return void
      */
@@ -1358,7 +1358,7 @@ class Container implements ContainerInterface
     /**
      * Creates a LazyProxy for the given factory.
      *
-     * @param string                              $id      The service identifier.
+     * @param string $id The service identifier.
      * @param callable(ContainerInterface): object $factory The factory to wrap.
      * @return LazyProxy
      */

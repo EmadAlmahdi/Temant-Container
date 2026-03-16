@@ -7,6 +7,8 @@ namespace Temant\Container\Resolver;
 use Closure;
 use ReflectionFunction;
 use Temant\Container\Container;
+use Temant\Container\Exception\ClassResolutionException;
+use Temant\Container\Exception\UnresolvableParameterException;
 
 use function array_key_exists;
 
@@ -50,11 +52,11 @@ final class Resolver
     /**
      * Resolves and instantiates a class by its fully qualified name.
      *
-     * @param class-string         $id         The class name to resolve.
-     * @param array<string, mixed> $overrides  Named parameter overrides for the constructor.
+     * @param class-string $id The class name to resolve.
+     * @param array<string, mixed> $overrides Named parameter overrides for the constructor.
      * @return object The resolved instance.
      *
-     * @throws \Temant\Container\Exception\ClassResolutionException If the class cannot be resolved.
+     * @throws ClassResolutionException If the class cannot be resolved.
      */
     public function resolve(string $id, array $overrides = []): object
     {
@@ -66,11 +68,11 @@ final class Resolver
      *
      * Parameters can be overridden by name via the $namedOverrides array.
      *
-     * @param callable             $callable       The callable to invoke.
+     * @param callable $callable The callable to invoke.
      * @param array<string, mixed> $namedOverrides Override values keyed by parameter name.
      * @return mixed The return value of the callable.
      *
-     * @throws \Temant\Container\Exception\UnresolvableParameterException If a parameter cannot be resolved.
+     * @throws UnresolvableParameterException If a parameter cannot be resolved.
      */
     public function call(callable $callable, array $namedOverrides = []): mixed
     {

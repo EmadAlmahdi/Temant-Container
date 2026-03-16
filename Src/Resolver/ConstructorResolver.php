@@ -26,8 +26,8 @@ use function is_array;
 final class ConstructorResolver
 {
     /**
-     * @param ParameterResolver    $parameterResolver The resolver for individual constructor parameters.
-     * @param list<class-string> &$resolvingStack    Reference to the current resolving stack for circular dependency detection.
+     * @param ParameterResolver $parameterResolver The resolver for individual constructor parameters.
+     * @param list<class-string> $resolvingStack Reference to the current resolving stack for circular dependency detection.
      */
     public function __construct(
         private readonly ParameterResolver $parameterResolver,
@@ -41,7 +41,7 @@ final class ConstructorResolver
      * Checks that the class exists and is instantiable, detects circular dependencies,
      * resolves constructor parameters, and returns a new instance.
      *
-     * @param class-string         $id        The fully qualified class name to resolve.
+     * @param class-string $id The fully qualified class name to resolve.
      * @param array<string, mixed> $overrides Named parameter overrides for the constructor.
      * @return object The newly created instance.
      *
@@ -87,8 +87,8 @@ final class ConstructorResolver
      *
      * Handles named overrides and variadic parameters.
      *
-     * @param ReflectionMethod     $constructor The constructor reflection.
-     * @param array<string, mixed> $overrides   Named parameter overrides.
+     * @param ReflectionMethod $constructor The constructor reflection.
+     * @param array<string, mixed> $overrides Named parameter overrides.
      * @return list<mixed> The resolved dependency values.
      */
     private function resolveDependencies(ReflectionMethod $constructor, array $overrides = []): array

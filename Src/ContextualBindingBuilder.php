@@ -21,7 +21,7 @@ final class ContextualBindingBuilder
 
     /**
      * @param Container $container The container to register the binding on.
-     * @param string    $consumer  The consuming class that triggers this binding.
+     * @param string $consumer The consuming class that triggers this binding.
      */
     public function __construct(
         private readonly Container $container,

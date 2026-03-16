@@ -9,7 +9,6 @@ use PHPUnit\Framework\TestCase;
 use Temant\Container\Container;
 use Temant\Container\LazyProxy;
 use Tests\Temant\Container\Fixtures\Foo;
-use Tests\Temant\Container\Fixtures\SomeClass;
 
 final class LazyProxyTest extends TestCase
 {

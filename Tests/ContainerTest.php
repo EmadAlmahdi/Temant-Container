@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Temant\Container;
 
-use Closure;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerExceptionInterface;

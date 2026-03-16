@@ -43,8 +43,8 @@ use function end;
 final class ParameterResolver
 {
     /**
-     * @param Container            $container      The container used for resolving dependencies.
-     * @param list<class-string> &$resolvingStack Reference to the resolving stack for contextual binding context.
+     * @param Container $container The container used for resolving dependencies.
+     * @param list<class-string> $resolvingStack Reference to the resolving stack for contextual binding context.
      */
     public function __construct(
         private readonly Container $container,
@@ -131,7 +131,7 @@ final class ParameterResolver
      * Resolves a parameter with an object (class/interface) type.
      *
      * @param ReflectionParameter $param The parameter reflection.
-     * @param ReflectionNamedType $type  The named type reflection.
+     * @param ReflectionNamedType $type The named type reflection.
      * @return mixed The resolved object instance, default value, or null.
      *
      * @throws UnresolvableParameterException If the object type cannot be resolved.
@@ -180,7 +180,7 @@ final class ParameterResolver
      * Resolves a parameter with a built-in scalar/array type.
      *
      * @param ReflectionParameter $param The parameter reflection.
-     * @param ReflectionNamedType $type  The named type reflection.
+     * @param ReflectionNamedType $type The named type reflection.
      * @return mixed The default value or null.
      *
      * @throws UnresolvableParameterException If no default or null fallback is available.

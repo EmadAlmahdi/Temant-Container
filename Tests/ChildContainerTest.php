@@ -7,10 +7,8 @@ namespace Tests\Temant\Container;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Temant\Container\Container;
-use Temant\Container\Exception\NotFoundException;
 use Tests\Temant\Container\Fixtures\Bar;
 use Tests\Temant\Container\Fixtures\Foo;
-use Tests\Temant\Container\Fixtures\SomeClass;
 
 final class ChildContainerTest extends TestCase
 {
