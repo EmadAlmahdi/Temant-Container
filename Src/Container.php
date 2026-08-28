@@ -6,6 +6,7 @@ namespace Temant\Container;
 
 use Closure;
 use Exception;
+use Psr\SimpleCache\CacheInterface;
 use ReflectionClass;
 use Temant\Container\Contract\ResolverContainer;
 use Temant\Container\Definition\BindingMap;
@@ -14,6 +15,7 @@ use Temant\Container\Exception\ContainerException;
 use Temant\Container\Exception\FrozenContainerException;
 use Temant\Container\Exception\NotFoundException;
 use Temant\Container\Proxy\LazyObjectFactory;
+use Temant\Container\Reflection\ReflectionCache;
 use Temant\Container\Registry\ContextualBindingRegistry;
 use Temant\Container\Registry\ProviderRegistry;
 use Temant\Container\Registry\TagRegistry;
@@ -62,6 +64,8 @@ class Container implements ContainerInterface, ResolverContainer
 
     private readonly LazyObjectFactory $lazyObjects;
 
+    private ReflectionCache $reflectionCache;
+
     private Resolver $resolver;
 
     private bool $frozen = false;
@@ -71,10 +75,13 @@ class Container implements ContainerInterface, ResolverContainer
     /**
      * @param bool $autowiringEnabled Resolve unregistered classes via reflection.
      * @param bool $cacheAutowire Cache autowired instances as singletons.
+     * @param CacheInterface|null $reflectionCache Optional PSR-16 store that persists
+     *        autowiring reflection results across processes. See {@see ReflectionCache}.
      */
     public function __construct(
         private bool $autowiringEnabled = true,
         private bool $cacheAutowire = true,
+        ?CacheInterface $reflectionCache = null,
     ) {
         $this->definitions = new DefinitionMap();
         $this->bindings = new BindingMap();
@@ -83,7 +90,8 @@ class Container implements ContainerInterface, ResolverContainer
         $this->pipeline = new ResolutionPipeline();
         $this->providers = new ProviderRegistry();
         $this->lazyObjects = new LazyObjectFactory();
-        $this->resolver = new Resolver($this);
+        $this->reflectionCache = new ReflectionCache($reflectionCache);
+        $this->resolver = new Resolver($this, $this->reflectionCache);
     }
 
     // -------------------------------------------------------------------------
@@ -595,6 +603,11 @@ class Container implements ContainerInterface, ResolverContainer
         $child = new self($this->autowiringEnabled, $this->cacheAutowire);
         $child->parent = $this;
 
+        // Reflection facts are process-global; share the parent's cache so a child
+        // never re-reflects a class the parent already analysed.
+        $child->reflectionCache = $this->reflectionCache;
+        $child->resolver = new Resolver($child, $this->reflectionCache);
+
         return $child;
     }
 
@@ -643,7 +656,8 @@ class Container implements ContainerInterface, ResolverContainer
         $this->contextual->clear();
         $this->pipeline->clear();
         $this->providers->clear();
-        $this->resolver = new Resolver($this);
+        // Keep the reflection cache: it holds process facts, not container state.
+        $this->resolver = new Resolver($this, $this->reflectionCache);
         $this->frozen = false;
     }
 
@@ -692,6 +706,18 @@ class Container implements ContainerInterface, ResolverContainer
                 $this->get($id);
             }
         }
+    }
+
+    /**
+     * Pre-builds and caches the autowiring reflection for the given classes without
+     * instantiating them. With a PSR-16 store configured (see the constructor), run
+     * this once after deployment so no request pays the reflection cost.
+     *
+     * @param iterable<class-string> $classes
+     */
+    public function prewarmReflection(iterable $classes): void
+    {
+        $this->reflectionCache->warm($classes);
     }
 
     // -------------------------------------------------------------------------

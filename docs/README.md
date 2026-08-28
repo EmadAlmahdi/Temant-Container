@@ -32,6 +32,7 @@ $mailer = $container->get(Mailer::class); // same instance every time
 | 11 | [Lifecycle](11-lifecycle.md) | `remove` / `clear` / `flushInstances` / `freeze` / `warmUp` |
 | 12 | [Introspection](12-introspection.md) | `keys` / `all` / `getDefinition` / `initialized` |
 | 13 | [Exceptions](13-exceptions.md) | The exception hierarchy and when each is thrown |
+| 14 | [Performance](14-performance.md) | The reflection cache, and the optional PSR-16 persistent cache |
 
 ### Reference
 

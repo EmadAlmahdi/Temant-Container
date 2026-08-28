@@ -24,10 +24,16 @@ Temant\Container\
 │   ├── ContextualBindingRegistry.php
 │   └── ProviderRegistry.php    register/boot lifecycle
 │
+├── Reflection/
+│   ├── ParameterDescriptor.php   reflected facts about one parameter (serialisable)
+│   ├── ConstructorDescriptor.php  reflected facts about a constructor
+│   ├── ParameterTypeKind.php      none | named | union | intersection
+│   └── ReflectionCache.php        build descriptors once; in-memory + optional PSR-16
+│
 ├── Resolution/
 │   ├── Resolver.php            entry point: class + callable resolution
-│   ├── ConstructorResolver.php reflect a constructor, build the class
-│   ├── ParameterResolver.php   resolve one parameter (types, unions, #[Inject], variadics)
+│   ├── ConstructorResolver.php  execute a ConstructorDescriptor, spread into `new`
+│   ├── ParameterResolver.php   turn a ParameterDescriptor into a value (types, unions, #[Inject], variadics)
 │   ├── ResolvingStack.php      the in-progress stack (circular-dep detection, consumer context)
 │   └── ResolutionPipeline.php  extenders -> inflectors -> resolving/afterResolving events
 │
@@ -93,7 +99,12 @@ boundary so collaborators stay pure data structures.
 6. `Resolver::resolve(id)` — autowire, `ResolutionPipeline::process`, cache if `cacheAutowire`.
 7. `NotFoundException`.
 
-`Resolver` drives `ConstructorResolver`, which pushes the class onto a shared
-`ResolvingStack` (for circular-dependency detection) and asks `ParameterResolver`
-for each argument. `ParameterResolver` reads `ResolvingStack::current()` to know
-which consumer a contextual binding applies to.
+`Resolver` drives `ConstructorResolver`, which asks `ReflectionCache` for the
+class's `ConstructorDescriptor` (built once, then cached), pushes the class onto a
+shared `ResolvingStack` (for circular-dependency detection), and asks
+`ParameterResolver` for each argument. `ParameterResolver` reads
+`ResolvingStack::current()` to know which consumer a contextual binding applies
+to. The descriptor holds only reflected *facts*; the resolution *decisions*
+(bindings, contextual, autowiring flag) are applied fresh each time.
+
+See [Performance](14-performance.md) for the reflection cache in detail.

@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerExceptionInterface;
 use Temant\Container\Container;
 use Temant\Container\Exception\ClassResolutionException;
+use Temant\Container\Reflection\ReflectionCache;
 use Temant\Container\Resolution\Resolver;
 use Tests\Temant\Container\Fixtures\CallTarget;
 use Tests\Temant\Container\Fixtures\CircularA;
@@ -22,7 +23,7 @@ final class ResolverTest extends TestCase
     protected function setUp(): void
     {
         $this->container = new Container();
-        $this->resolver = new Resolver($this->container);
+        $this->resolver = new Resolver($this->container, new ReflectionCache());
     }
 
     #[Test]

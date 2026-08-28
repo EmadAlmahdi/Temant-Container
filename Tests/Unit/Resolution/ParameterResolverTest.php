@@ -8,9 +8,9 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
-use ReflectionParameter;
 use Temant\Container\Container;
 use Temant\Container\Exception\UnresolvableParameterException;
+use Temant\Container\Reflection\ParameterDescriptor;
 use Temant\Container\Resolution\ParameterResolver;
 use Temant\Container\Resolution\ResolvingStack;
 use Tests\Temant\Container\Fixtures\Baz;
@@ -34,12 +34,20 @@ final class ParameterResolverTest extends TestCase
         return new ParameterResolver(new Container(autowiringEnabled: $autowiring), new ResolvingStack());
     }
 
-    private static function firstParam(string $class): ReflectionParameter
+    private static function firstParam(string $class): ParameterDescriptor
+    {
+        return self::params($class)[0];
+    }
+
+    /**
+     * @return list<ParameterDescriptor>
+     */
+    private static function params(string $class): array
     {
         $constructor = (new ReflectionClass($class))->getConstructor();
         self::assertNotNull($constructor);
 
-        return $constructor->getParameters()[0];
+        return array_map(ParameterDescriptor::fromReflection(...), $constructor->getParameters());
     }
 
     /**
@@ -121,10 +129,7 @@ final class ParameterResolverTest extends TestCase
     #[Test]
     public function resolvesFromContainerThenAutowiring(): void
     {
-        $constructor = (new ReflectionClass(Baz::class))->getConstructor();
-        self::assertNotNull($constructor);
-
-        [$fooParam, $barParam] = $constructor->getParameters();
+        [$fooParam, $barParam] = self::params(Baz::class);
 
         self::assertInstanceOf(Foo::class, $this->resolver()->resolveParameter($fooParam));
         self::assertInstanceOf(\Tests\Temant\Container\Fixtures\Bar::class, $this->resolver()->resolveParameter($barParam));

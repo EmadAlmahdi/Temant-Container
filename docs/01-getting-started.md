@@ -21,19 +21,21 @@ use Temant\Container\Container;
 $container = new Container();
 ```
 
-The constructor takes two flags:
+The constructor takes two flags and an optional cache:
 
 ```php
 new Container(
-    autowiringEnabled: true, // resolve unregistered classes by reflection
-    cacheAutowire:     true, // cache autowired instances as singletons
+    autowiringEnabled: true,  // resolve unregistered classes by reflection
+    cacheAutowire:     true,  // cache autowired instances as singletons
+    reflectionCache:   null,  // optional PSR-16 store, see the Performance page
 );
 ```
 
-| Flag | `true` (default) | `false` |
-|------|------------------|---------|
+| Argument | `true` / default | otherwise |
+|----------|------------------|-----------|
 | `autowiringEnabled` | Unknown classes are built by reflection | Only explicitly registered entries resolve |
 | `cacheAutowire` | An autowired class is built once, then reused | A new instance on every `get()` |
+| `reflectionCache` | reflection results kept in memory only | also persisted across processes — see [Performance](14-performance.md) |
 
 Both can be changed later — `autowiringEnabled` via
 [`setAutowiring()`](03-autowiring.md#toggling-autowiring); `cacheAutowire` is

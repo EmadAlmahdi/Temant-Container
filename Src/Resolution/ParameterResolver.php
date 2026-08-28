@@ -5,33 +5,32 @@ declare(strict_types=1);
 namespace Temant\Container\Resolution;
 
 use Closure;
-use ReflectionIntersectionType;
-use ReflectionNamedType;
-use ReflectionParameter;
-use ReflectionUnionType;
-use Temant\Container\Attribute\Inject;
 use Temant\Container\Contract\ResolverContainer;
 use Temant\Container\Exception\UnresolvableParameterException;
+use Temant\Container\Reflection\ParameterDescriptor;
+use Temant\Container\Reflection\ParameterTypeKind;
 
 use function array_map;
 use function array_values;
 use function is_array;
 
 /**
- * Resolves a single constructor or callable parameter to a value.
+ * Turns a {@see ParameterDescriptor} (the reflected facts about a parameter) into
+ * an actual value, applying the container's live state.
  *
  * Resolution order for a non-variadic parameter:
  *
- *   1. `#[Inject(id)]` attribute -- resolve that container ID directly.
+ *   1. `#[Inject(id)]` -- resolve that container id directly.
  *   2. No type hint -- unresolvable (throws).
- *   3. Union type -- try each object member in turn; first that resolves wins.
+ *   3. Union type -- a bound member first, then the first autowirable member,
+ *      then null / default, else throw.
  *   4. Intersection type -- unsupported (throws).
- *   5. Object type -- contextual binding, then registered entry, then autowiring,
+ *   5. Object type -- contextual binding, then any registered/autowirable entry,
  *      then null (if nullable), then default value, else throw.
  *   6. Built-in type -- default value, then null (if nullable), else throw.
  *
- * Variadic parameters resolve to an array via contextual bindings, tagged services,
- * or a single registered instance; an empty array is always an acceptable result.
+ * Variadic parameters resolve to a list via contextual bindings, tagged services,
+ * or a single registered instance; an empty list is always acceptable.
  *
  * @internal
  */
@@ -46,72 +45,48 @@ final class ParameterResolver
     /**
      * @throws UnresolvableParameterException If the parameter cannot be resolved.
      */
-    public function resolveParameter(ReflectionParameter $parameter): mixed
+    public function resolveParameter(ParameterDescriptor $parameter): mixed
     {
-        $inject = $this->injectAttribute($parameter);
-
-        if ($inject !== null) {
-            return $this->container->get($inject->id);
+        if ($parameter->injectId !== null) {
+            return $this->container->get($parameter->injectId);
         }
 
-        if ($parameter->isVariadic()) {
-            throw UnresolvableParameterException::variadicNotSupported($parameter->getName());
+        if ($parameter->isVariadic) {
+            throw UnresolvableParameterException::variadicNotSupported($parameter->name);
         }
 
-        $type = $parameter->getType();
-
-        if ($type === null) {
-            throw UnresolvableParameterException::notTypeHinted($parameter->getName());
-        }
-
-        if ($type instanceof ReflectionUnionType) {
-            return $this->resolveUnionType($parameter, $type);
-        }
-
-        if ($type instanceof ReflectionIntersectionType) {
-            throw UnresolvableParameterException::intersectionTypeNotSupported($parameter->getName());
-        }
-
-        // Only ReflectionNamedType can remain, but narrow explicitly for the type checker.
-        if (!$type instanceof ReflectionNamedType) {
-            throw UnresolvableParameterException::unsupportedType($parameter->getName(), (string) $type);
-        }
-
-        if ($type->isBuiltin()) {
-            return $this->resolveBuiltinType($parameter, $type);
-        }
-
-        return $this->resolveObjectType($parameter, $type->getName(), $type->allowsNull());
+        return match ($parameter->typeKind) {
+            ParameterTypeKind::None => throw UnresolvableParameterException::notTypeHinted($parameter->name),
+            ParameterTypeKind::Intersection => throw UnresolvableParameterException::intersectionTypeNotSupported($parameter->name),
+            ParameterTypeKind::Union => $this->resolveUnion($parameter),
+            ParameterTypeKind::Named => $parameter->isBuiltin
+                ? $this->resolveBuiltin($parameter)
+                : $this->resolveObject($parameter, (string) $parameter->typeName),
+        };
     }
 
     /**
-     * Resolves a typed variadic parameter to a list of values.
-     *
      * @return list<mixed>
      */
-    public function resolveVariadicParameter(ReflectionParameter $parameter): array
+    public function resolveVariadicParameter(ParameterDescriptor $parameter): array
     {
-        $inject = $this->injectAttribute($parameter);
-
-        if ($inject !== null) {
-            /** @var list<mixed> $tagged */
-            $tagged = $this->container->tagged($inject->id);
+        if ($parameter->injectId !== null) {
+            $tagged = $this->container->tagged($parameter->injectId);
 
             if ($tagged !== []) {
                 return $tagged;
             }
 
-            return $this->container->has($inject->id) ? [$this->container->get($inject->id)] : [];
+            return $this->container->has($parameter->injectId)
+                ? [$this->container->get($parameter->injectId)]
+                : [];
         }
 
-        $type = $parameter->getType();
-
-        if (!$type instanceof ReflectionNamedType || $type->isBuiltin()) {
+        if ($parameter->typeKind !== ParameterTypeKind::Named || $parameter->isBuiltin || $parameter->typeName === null) {
             return [];
         }
 
-        $className = $type->getName();
-
+        $className = $parameter->typeName;
         $contextual = $this->contextualBinding($className);
 
         if ($contextual !== null) {
@@ -131,6 +106,78 @@ final class ParameterResolver
         return [];
     }
 
+    private function resolveObject(ParameterDescriptor $parameter, string $className): mixed
+    {
+        $contextual = $this->contextualBinding($className);
+
+        if ($contextual !== null && !is_array($contextual)) {
+            return $this->resolveScalarContextual($contextual);
+        }
+
+        // has() already accounts for autowiring, bindings and the parent container.
+        if ($this->container->has($className)) {
+            return $this->container->get($className);
+        }
+
+        if ($parameter->allowsNull) {
+            return null;
+        }
+
+        if ($parameter->hasDefault) {
+            return $parameter->default();
+        }
+
+        throw UnresolvableParameterException::notRegisteredInContainer($parameter->name, $className);
+    }
+
+    private function resolveBuiltin(ParameterDescriptor $parameter): mixed
+    {
+        if ($parameter->hasDefault) {
+            return $parameter->default();
+        }
+
+        if ($parameter->allowsNull) {
+            return null;
+        }
+
+        throw UnresolvableParameterException::unsupportedType($parameter->name, $parameter->typeName ?? 'mixed');
+    }
+
+    private function resolveUnion(ParameterDescriptor $parameter): mixed
+    {
+        // Pass 1: a contextual binding or an explicit registration for any member.
+        foreach ($parameter->unionTypeNames as $className) {
+            $contextual = $this->contextualBinding($className);
+
+            if ($contextual !== null && !is_array($contextual)) {
+                return $this->resolveScalarContextual($contextual);
+            }
+
+            if ($this->container->isBound($className)) {
+                return $this->container->get($className);
+            }
+        }
+
+        // Pass 2: autowire the first member the container can build.
+        if ($this->container->hasAutowiring()) {
+            foreach ($parameter->unionTypeNames as $className) {
+                if ($this->container->has($className)) {
+                    return $this->container->get($className);
+                }
+            }
+        }
+
+        if ($parameter->allowsNull) {
+            return null;
+        }
+
+        if ($parameter->hasDefault) {
+            return $parameter->default();
+        }
+
+        throw UnresolvableParameterException::unionTypeNotSupported($parameter->name);
+    }
+
     /**
      * @param string|Closure|list<string> $contextual
      * @return list<mixed>
@@ -148,86 +195,6 @@ final class ParameterResolver
         }
 
         return [$this->container->get($contextual)];
-    }
-
-    private function resolveUnionType(ReflectionParameter $parameter, ReflectionUnionType $type): mixed
-    {
-        $objectMembers = [];
-
-        foreach ($type->getTypes() as $member) {
-            if ($member instanceof ReflectionNamedType && !$member->isBuiltin()) {
-                $objectMembers[] = $member->getName();
-            }
-        }
-
-        // Pass 1: an explicit registration, binding, or contextual binding for any member.
-        foreach ($objectMembers as $className) {
-            $contextual = $this->contextualBinding($className);
-
-            if ($contextual !== null && !is_array($contextual)) {
-                return $this->resolveScalarContextual($contextual);
-            }
-
-            if ($this->container->isBound($className)) {
-                return $this->container->get($className);
-            }
-        }
-
-        // Pass 2: autowire the first member the container can build.
-        if ($this->container->hasAutowiring()) {
-            foreach ($objectMembers as $className) {
-                if ($this->container->has($className)) {
-                    return $this->container->get($className);
-                }
-            }
-        }
-
-        if ($type->allowsNull()) {
-            return null;
-        }
-
-        if ($parameter->isDefaultValueAvailable()) {
-            return $parameter->getDefaultValue();
-        }
-
-        throw UnresolvableParameterException::unionTypeNotSupported($parameter->getName());
-    }
-
-    private function resolveObjectType(ReflectionParameter $parameter, string $className, bool $nullable): mixed
-    {
-        $contextual = $this->contextualBinding($className);
-
-        if ($contextual !== null && !is_array($contextual)) {
-            return $this->resolveScalarContextual($contextual);
-        }
-
-        // has() already accounts for autowiring, bindings and the parent container.
-        if ($this->container->has($className)) {
-            return $this->container->get($className);
-        }
-
-        if ($nullable) {
-            return null;
-        }
-
-        if ($parameter->isDefaultValueAvailable()) {
-            return $parameter->getDefaultValue();
-        }
-
-        throw UnresolvableParameterException::notRegisteredInContainer($parameter->getName(), $className);
-    }
-
-    private function resolveBuiltinType(ReflectionParameter $parameter, ReflectionNamedType $type): mixed
-    {
-        if ($parameter->isDefaultValueAvailable()) {
-            return $parameter->getDefaultValue();
-        }
-
-        if ($type->allowsNull()) {
-            return null;
-        }
-
-        throw UnresolvableParameterException::unsupportedType($parameter->getName(), $type->getName());
     }
 
     private function resolveScalarContextual(string|Closure $contextual): mixed
@@ -251,16 +218,5 @@ final class ParameterResolver
         }
 
         return $this->container->getContextualBinding($consumer, $abstract);
-    }
-
-    private function injectAttribute(ReflectionParameter $parameter): ?Inject
-    {
-        $attributes = $parameter->getAttributes(Inject::class);
-
-        if ($attributes === []) {
-            return null;
-        }
-
-        return $attributes[0]->newInstance();
     }
 }

@@ -87,6 +87,14 @@ extender queues and applies on the next resolution.
 - [`when()->needs()->giveTagged('tag')`](04-binding-and-context.md#a-list-or-a-tag-for-variadics)
   and `give([...ids])` for variadics
 - [`Container::initialized($id)`](12-introspection.md#initialized)
+- A cached, optionally persisted [reflection cache](14-performance.md) — new third
+  constructor argument `reflectionCache:` and `Container::prewarmReflection()`
 - `ContainerInterface` gained `tagged()` and `initialized()`
+
+## New dependency
+
+`psr/simple-cache` (^3.0, interfaces only) is now required. If you pin transitive
+dependencies, add it. No code change is needed — the reflection cache works in
+memory with no PSR-16 implementation installed.
 
 See [`CHANGELOG.md`](../CHANGELOG.md) for the full list.

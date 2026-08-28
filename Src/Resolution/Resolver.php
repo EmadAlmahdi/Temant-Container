@@ -9,6 +9,8 @@ use ReflectionFunction;
 use Temant\Container\Contract\ResolverContainer;
 use Temant\Container\Exception\ClassResolutionException;
 use Temant\Container\Exception\UnresolvableParameterException;
+use Temant\Container\Reflection\ParameterDescriptor;
+use Temant\Container\Reflection\ReflectionCache;
 
 use function array_key_exists;
 
@@ -17,8 +19,8 @@ use function array_key_exists;
  * with their dependencies injected.
  *
  * Delegates class instantiation to {@see ConstructorResolver} and per-parameter
- * resolution to {@see ParameterResolver}, sharing a single {@see ResolvingStack}
- * between them for circular-dependency detection and contextual-binding context.
+ * resolution to {@see ParameterResolver}, sharing one {@see ResolvingStack} between
+ * them for circular-dependency detection and contextual-binding context.
  *
  * @internal
  */
@@ -28,11 +30,15 @@ final class Resolver
     private readonly ParameterResolver $parameterResolver;
     private readonly ConstructorResolver $constructorResolver;
 
-    public function __construct(ResolverContainer $container)
+    public function __construct(ResolverContainer $container, ReflectionCache $reflectionCache)
     {
         $this->stack = new ResolvingStack();
         $this->parameterResolver = new ParameterResolver($container, $this->stack);
-        $this->constructorResolver = new ConstructorResolver($this->parameterResolver, $this->stack);
+        $this->constructorResolver = new ConstructorResolver(
+            $this->parameterResolver,
+            $this->stack,
+            $reflectionCache,
+        );
     }
 
     /**
@@ -62,23 +68,23 @@ final class Resolver
         $args = [];
 
         foreach ($reflection->getParameters() as $parameter) {
-            $name = $parameter->getName();
-
-            if (array_key_exists($name, $namedOverrides)) {
-                $args[] = $namedOverrides[$name];
+            if (array_key_exists($parameter->getName(), $namedOverrides)) {
+                $args[] = $namedOverrides[$parameter->getName()];
 
                 continue;
             }
 
-            if ($parameter->isVariadic()) {
-                foreach ($this->parameterResolver->resolveVariadicParameter($parameter) as $value) {
+            $descriptor = ParameterDescriptor::fromReflection($parameter);
+
+            if ($descriptor->isVariadic) {
+                foreach ($this->parameterResolver->resolveVariadicParameter($descriptor) as $value) {
                     $args[] = $value;
                 }
 
                 continue;
             }
 
-            $args[] = $this->parameterResolver->resolveParameter($parameter);
+            $args[] = $this->parameterResolver->resolveParameter($descriptor);
         }
 
         return $callable(...$args);

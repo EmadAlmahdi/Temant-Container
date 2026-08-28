@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Temant\Container\Resolution;
 
-use ReflectionClass;
-use ReflectionMethod;
 use Temant\Container\Exception\ClassResolutionException;
+use Temant\Container\Reflection\ParameterDescriptor;
+use Temant\Container\Reflection\ReflectionCache;
 
 use function array_key_exists;
 use function class_exists;
 use function is_array;
 
 /**
- * Instantiates a class by reflecting its constructor and resolving each parameter.
+ * Instantiates a class from its cached {@see \Temant\Container\Reflection\ConstructorDescriptor}.
+ *
+ * All reflection happens once, in {@see ReflectionCache}; this class only executes
+ * the resulting plan and spreads the arguments into `new`.
  *
  * @internal
  */
@@ -22,6 +25,7 @@ final class ConstructorResolver
     public function __construct(
         private readonly ParameterResolver $parameterResolver,
         private readonly ResolvingStack $stack,
+        private readonly ReflectionCache $reflectionCache,
     ) {
     }
 
@@ -42,63 +46,62 @@ final class ConstructorResolver
             throw ClassResolutionException::circularDependency($id, $this->stack->chain($id));
         }
 
+        $descriptor = $this->reflectionCache->constructorFor($id);
+
+        if (!$descriptor->isInstantiable) {
+            throw ClassResolutionException::notInstantiable($id);
+        }
+
+        if (!$descriptor->hasConstructor) {
+            return new $id();
+        }
+
         $this->stack->push($id);
 
         try {
-            $reflection = new ReflectionClass($id);
+            $arguments = $this->resolveArguments($descriptor->parameters, $overrides);
 
-            if (!$reflection->isInstantiable()) {
-                throw ClassResolutionException::notInstantiable($id);
-            }
-
-            $constructor = $reflection->getConstructor();
-
-            if ($constructor === null) {
-                return $reflection->newInstance();
-            }
-
-            return $reflection->newInstanceArgs($this->resolveDependencies($constructor, $overrides));
+            return new $id(...$arguments);
         } finally {
             $this->stack->pop();
         }
     }
 
     /**
+     * @param list<ParameterDescriptor> $parameters
      * @param array<string, mixed> $overrides
      * @return list<mixed>
      */
-    private function resolveDependencies(ReflectionMethod $constructor, array $overrides): array
+    private function resolveArguments(array $parameters, array $overrides): array
     {
-        $args = [];
+        $arguments = [];
 
-        foreach ($constructor->getParameters() as $parameter) {
-            $name = $parameter->getName();
+        foreach ($parameters as $parameter) {
+            if (array_key_exists($parameter->name, $overrides)) {
+                $override = $overrides[$parameter->name];
 
-            if (array_key_exists($name, $overrides)) {
-                $override = $overrides[$name];
-
-                if ($parameter->isVariadic() && is_array($override)) {
+                if ($parameter->isVariadic && is_array($override)) {
                     foreach ($override as $value) {
-                        $args[] = $value;
+                        $arguments[] = $value;
                     }
                 } else {
-                    $args[] = $override;
+                    $arguments[] = $override;
                 }
 
                 continue;
             }
 
-            if ($parameter->isVariadic()) {
+            if ($parameter->isVariadic) {
                 foreach ($this->parameterResolver->resolveVariadicParameter($parameter) as $value) {
-                    $args[] = $value;
+                    $arguments[] = $value;
                 }
 
                 continue;
             }
 
-            $args[] = $this->parameterResolver->resolveParameter($parameter);
+            $arguments[] = $this->parameterResolver->resolveParameter($parameter);
         }
 
-        return $args;
+        return $arguments;
     }
 }

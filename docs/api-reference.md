@@ -7,7 +7,7 @@ Every public method of `Temant\Container\Container`. Registration methods return
 
 | Signature | |
 |-----------|--|
-| `__construct(bool $autowiringEnabled = true, bool $cacheAutowire = true)` | See [Getting started](01-getting-started.md#create-a-container) |
+| `__construct(bool $autowiringEnabled = true, bool $cacheAutowire = true, ?Psr\SimpleCache\CacheInterface $reflectionCache = null)` | See [Getting started](01-getting-started.md#create-a-container) and [Performance](14-performance.md) |
 
 ## Registration → [docs](02-registering-services.md)
 
@@ -84,6 +84,7 @@ Every public method of `Temant\Container\Container`. Registration methods return
 | `freeze()` | `void` | Reject all further mutation |
 | `isFrozen()` | `bool` | Whether the container is frozen |
 | `warmUp()` | `void` | Eagerly resolve every shared service |
+| `prewarmReflection(iterable<class-string> $classes)` | `void` | Build & cache autowiring reflection without instantiating — see [Performance](14-performance.md) |
 
 ## Autowiring → [docs](03-autowiring.md)
 

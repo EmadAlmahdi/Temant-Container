@@ -36,7 +36,8 @@ A lightweight, [PSR-11](https://www.php-fig.org/psr/psr-11/) compliant dependenc
 - **Freeze & warm-up** -- lock the container and pre-resolve singletons for production
 - **Definition introspection** -- inspect registrations without resolving them
 - **Circular dependency detection** -- clear error messages with full dependency chain
-- **Zero dependencies** -- only requires `psr/container`
+- **Reflection cache** -- autowiring reflection is cached in memory, and optionally persisted across processes via any [PSR-16](https://www.php-fig.org/psr/simple-cache/) cache
+- **Minimal dependencies** -- only `psr/container` and `psr/simple-cache` (interfaces only)
 
 ## Requirements
 
@@ -82,6 +83,7 @@ The full guide lives in [`docs/`](docs/README.md).
 | [Lifecycle](docs/11-lifecycle.md) | `remove` / `clear` / `flushInstances` / `freeze` / `warmUp` |
 | [Introspection](docs/12-introspection.md) | `keys` / `all` / `getDefinition` / `initialized` |
 | [Exceptions](docs/13-exceptions.md) | The exception hierarchy and when each is thrown |
+| [Performance](docs/14-performance.md) | The reflection cache and the optional PSR-16 persistent cache |
 | [API reference](docs/api-reference.md) | Every public method in one table |
 | [Architecture](docs/architecture.md) | How the container is put together internally |
 | [Upgrading from 2.x](docs/upgrading.md) | Breaking changes and migration steps |

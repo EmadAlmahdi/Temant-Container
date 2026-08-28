@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Temant\Container\Container;
 use Temant\Container\Exception\ClassResolutionException;
+use Temant\Container\Reflection\ReflectionCache;
 use Temant\Container\Resolution\ConstructorResolver;
 use Temant\Container\Resolution\ParameterResolver;
 use Temant\Container\Resolution\ResolvingStack;
@@ -25,7 +26,7 @@ final class ConstructorResolverTest extends TestCase
         $stack = new ResolvingStack();
         $parameters = new ParameterResolver(new Container(), $stack);
 
-        $this->resolver = new ConstructorResolver($parameters, $stack);
+        $this->resolver = new ConstructorResolver($parameters, $stack, new ReflectionCache());
     }
 
     #[Test]

@@ -12,6 +12,12 @@ rebuilds the internals into small, focused collaborators and sharpens autowiring
 
 ### Added
 
+- **Reflection cache.** Autowiring reflection (constructor + parameter analysis) is
+  now cached as a plain data structure and reused, so repeated `make()` calls,
+  factory-defined autowired dependencies, and tagged resolution no longer reflect
+  every time. Pass a PSR-16 cache as the new third constructor argument
+  (`reflectionCache:`) to persist it across processes; `prewarmReflection()` warms
+  it without instantiating. Adds a `psr/simple-cache` (interfaces-only) dependency.
 - **Native lazy objects.** `lazy()` now returns a real, type-transparent instance of
   the target class (PHP 8.4+ lazy proxies). `instanceof` checks and type hints work.
   The magic-method `LazyProxy` remains as a fallback for interface IDs and decorated
@@ -37,9 +43,11 @@ rebuilds the internals into small, focused collaborators and sharpens autowiring
   - `Temant\Container\Resolver\*` -> `Temant\Container\Resolution\*` (internal)
 - **`Container` decomposed** into `Definition\DefinitionMap`, `Definition\BindingMap`,
   `Registry\{TagRegistry, ContextualBindingRegistry, ProviderRegistry}`,
+  `Reflection\{ReflectionCache, ConstructorDescriptor, ParameterDescriptor}`,
   `Resolution\{Resolver, ConstructorResolver, ParameterResolver, ResolvingStack,
   ResolutionPipeline}`, and `Proxy\LazyObjectFactory`. The resolution layer now
-  depends on `Contract\ResolverContainer`, not the concrete class.
+  depends on `Contract\ResolverContainer`, not the concrete class; the internal
+  `Resolver` / `ConstructorResolver` constructors changed shape.
 - **`extend()` may be called before the target is registered** -- extenders queue and
   apply on the next resolution instead of throwing.
 - **`has()` returns `false` for an existing but non-instantiable class** (abstract /
