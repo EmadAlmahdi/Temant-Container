@@ -4,7 +4,7 @@ Thank you for considering a contribution! This document outlines the guidelines 
 
 ## Requirements
 
-- PHP 8.2 or higher
+- PHP 8.5 or higher
 - [Composer](https://getcomposer.org/)
 
 ## Getting Started
@@ -49,6 +49,23 @@ Thank you for considering a contribution! This document outlines the guidelines 
    ```bash
    composer test
    ```
+
+### Architecture
+
+`Container` is a thin facade. It owns only container-wide state and the
+`get()` / `make()` / `has()` flow, and delegates everything else to focused
+collaborators:
+
+| Directory            | Responsibility                                              |
+|----------------------|------------------------------------------------------------|
+| `Definition/`        | Service definitions (`DefinitionMap`) and bindings (`BindingMap`) |
+| `Registry/`          | Tags, contextual bindings, service providers                |
+| `Resolution/`        | Autowiring, callable invocation, the post-resolution pipeline |
+| `Proxy/`             | Native and fallback lazy stand-ins                          |
+| `Attribute/`         | `#[Inject]`                                                 |
+| `Contract/`          | `ResolverContainer` -- the narrow interface the resolution layer depends on |
+
+Keep new logic in the right collaborator; only wire it through the facade.
 
 ### Commit Messages
 
@@ -102,7 +119,8 @@ composer test
 
 ### Writing Tests
 
-- Place tests in `Tests/`, mirroring the `Src/` directory structure.
+- Isolated tests of a single class go in `Tests/Unit/`, mirroring the `Src/` layout;
+  behaviour tests that drive the whole `Container` go in `Tests/Feature/`.
 - Use the `Tests\Temant\Container` namespace (not the production namespace).
 - Use PHPUnit `#[Test]` attributes instead of the `test` method name prefix.
 - Place test fixtures in `Tests/Fixtures/`.

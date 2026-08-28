@@ -8,12 +8,14 @@
 [![PHPStan Level](https://img.shields.io/badge/PHPStan-level%20max-brightgreen)](https://phpstan.org/)
 [![PSR-11](https://img.shields.io/badge/PSR--11-compliant-blue)](https://www.php-fig.org/psr/psr-11/)
 
-A lightweight, [PSR-11](https://www.php-fig.org/psr/psr-11/) compliant dependency injection container for PHP 8.2+ with autowiring support.
+A lightweight, [PSR-11](https://www.php-fig.org/psr/psr-11/) compliant dependency injection container for PHP 8.5+ with autowiring support.
+
+> **Upgrading from 2.x?** See the [migration notes in `CHANGELOG.md`](CHANGELOG.md#migration-from-2x). The short version: `LazyProxy` moved to `Temant\Container\Proxy\LazyProxy`, lazy services are now type-transparent native objects, and union-typed parameters are autowired instead of rejected.
 
 ## Features
 
 - **PSR-11 compliant** -- implements `Psr\Container\ContainerInterface`
-- **Autowiring** -- automatic dependency resolution via reflection (optional, enabled by default)
+- **Autowiring** -- automatic dependency resolution via reflection (optional, enabled by default), including **union types** and the **`#[Inject]`** attribute
 - **Shared (singleton) services** -- factory invoked once, result cached
 - **Factory services** -- new instance on every retrieval
 - **Pre-built instances** -- register existing objects directly
@@ -28,7 +30,7 @@ A lightweight, [PSR-11](https://www.php-fig.org/psr/psr-11/) compliant dependenc
 - **`Class@method` syntax** -- resolve and invoke in one step
 - **Fresh instances** -- `make()` bypasses cache with optional parameter overrides
 - **Conditional registration** -- `setIf()`, `factoryIf()`, `instanceIf()` skip duplicates silently
-- **Lazy proxies** -- defer heavy service instantiation until first use
+- **Lazy services** -- defer heavy service instantiation until first use, using PHP's type-transparent native lazy objects
 - **Child containers** -- scoped resolution with parent fallback
 - **Variadic parameter support** -- typed variadics resolved from tagged services
 - **Freeze & warm-up** -- lock the container and pre-resolve singletons for production
@@ -38,7 +40,7 @@ A lightweight, [PSR-11](https://www.php-fig.org/psr/psr-11/) compliant dependenc
 
 ## Requirements
 
-- PHP 8.2 or higher
+- PHP 8.5 or higher
 - [Composer](https://getcomposer.org/)
 
 ## Installation
@@ -198,6 +200,18 @@ $container->when(PaymentService::class)
 
 Contextual bindings take precedence over global bindings. If no contextual binding matches, the container falls back to global bindings and autowiring as usual.
 
+For a **typed variadic** dependency, give a list of IDs or a whole tag:
+
+```php
+$container->when(Dashboard::class)
+          ->needs(WidgetInterface::class)
+          ->give([ChartWidget::class, TableWidget::class]);
+
+$container->when(Dashboard::class)
+          ->needs(WidgetInterface::class)
+          ->giveTagged('widgets'); // every service tagged "widgets"
+```
+
 ### Tagging
 
 Group related services under a tag name and resolve them all at once.
@@ -331,7 +345,10 @@ $container->hasAutowiring(); // false
 
 #### Resolution Rules
 
-For **object types** (class/interface), the resolver tries in order:
+The resolver checks for an **`#[Inject(id)]` attribute** on the parameter first; if
+present, it resolves that container ID directly and skips the rules below.
+
+For **object types** (class/interface), the resolver then tries in order:
 
 1. Contextual binding for the current consumer class
 2. Explicitly registered entry in the container
@@ -340,13 +357,37 @@ For **object types** (class/interface), the resolver tries in order:
 5. Return the default value if one is declared
 6. Throw `UnresolvableParameterException`
 
+For **union types** (`Foo|Bar`), each object member is tried in order:
+
+1. An explicitly bound / contextually bound member wins first
+2. Then the first member the container can autowire
+3. Then `null` (if nullable), then the default value
+4. Then `UnresolvableParameterException`
+
 For **built-in types** (string, int, array, etc.):
 
 1. Return the default value if one is declared
 2. Return `null` if nullable
 3. Throw `UnresolvableParameterException`
 
-**Not supported** (by design): union types and intersection types throw `UnresolvableParameterException`.
+**Not supported** (by design): intersection types throw `UnresolvableParameterException`.
+
+#### The `#[Inject]` Attribute
+
+Pin a parameter to a specific container ID, bypassing type-based resolution -- useful
+when several implementations of an interface are registered.
+
+```php
+use Temant\Container\Attribute\Inject;
+
+final class ReportService
+{
+    public function __construct(
+        #[Inject(RedisCache::class)] private CacheInterface $cache,
+        #[Inject('loggers')]         LoggerInterface ...$loggers, // pulls a tag
+    ) {}
+}
+```
 
 #### Variadic Parameter Support
 
@@ -424,33 +465,41 @@ $mailer = $container->make(Mailer::class, [
 
 `make()` respects bindings, extenders, and inflectors -- it just skips the instance cache.
 
-### Lazy Proxies
+### Lazy Services
 
-Defer instantiation of heavy services until they are actually used. The factory does not run on `get()` -- it runs on the first method call, property access, or explicit `getTarget()`.
+Defer instantiation of heavy services until they are actually used. The factory does
+not run on `get()` -- it runs on the first method call or property access.
 
 ```php
-use Temant\Container\LazyProxy;
-
 $container->lazy(HeavyService::class, function (ContainerInterface $c) {
-    // This runs only when a method is called on the proxy
+    // This runs only on first interaction with the returned object
     return new HeavyService($c->get(Database::class));
 });
 
-$service = $container->get(HeavyService::class); // Returns a LazyProxy -- factory NOT called
-$service->doWork();                               // NOW the factory runs, then doWork() is called
+$service = $container->get(HeavyService::class); // factory NOT called
+$service instanceof HeavyService;                // true -- native lazy object
+$service->doWork();                              // NOW the factory runs, then doWork() runs
 ```
 
-You can inspect proxy state:
+When the entry resolves to a concrete, instantiable class, `lazy()` returns a **native
+PHP lazy object** -- a real instance of that class whose initialisation is deferred, so
+`instanceof` and type hints keep working.
+
+Check whether the factory has run yet:
 
 ```php
-$proxy = $container->get(HeavyService::class);
-
-$proxy->isInitialized(); // false -- not yet created
-$proxy->getTarget();     // forces creation, returns real instance
-$proxy->isInitialized(); // true
+$container->initialized(HeavyService::class); // false, then true after first use
 ```
 
-> **Limitation:** The proxy delegates via `__call()` / `__get()` / `__set()` magic methods. `instanceof` checks against the proxied type will return `false`. For transparent lazy objects, PHP 8.4+ native lazy objects are recommended.
+> **Fallback:** If the entry resolves to an interface / non-class ID, or it has
+> `extend()` decorators that may swap its type, the container falls back to
+> `Temant\Container\Proxy\LazyProxy` -- a `__call()` / `__get()` magic-method wrapper.
+> `instanceof` against the proxied type returns `false` for that fallback; it exposes
+> `isInitialized()` and `getTarget()` for inspection.
+
+> **Note:** A native lazy object initialises on the first access to instance state
+> (a method that touches `$this`, or a property read/write). A method that only
+> returns static/constant data may run without triggering initialisation.
 
 ### Child Containers (Scoped)
 
@@ -508,7 +557,7 @@ $container->freeze();
 $container->isFrozen(); // true
 
 $container->set(Foo::class, fn() => new Foo());
-// throws ContainerException: "Cannot modify a frozen container."
+// throws FrozenContainerException (a subclass of ContainerException)
 
 // clear() resets the frozen state
 $container->clear();
@@ -575,9 +624,12 @@ All exceptions implement `Psr\Container\ContainerExceptionInterface` for PSR-11 
 | Exception | When |
 |---|---|
 | `NotFoundException` | Entry not found and cannot be autowired. Implements `NotFoundExceptionInterface`. |
-| `ContainerException` | Duplicate registration, binding loop, frozen container, non-object return, or general resolution error. |
+| `ContainerException` | Duplicate registration, binding loop, non-object return, or general resolution error. |
+| `FrozenContainerException` | A mutating call was made on a frozen container. Extends `ContainerException`. |
 | `ClassResolutionException` | Class not found, not instantiable, or circular dependency detected. Extends `ContainerException`. |
-| `UnresolvableParameterException` | Parameter has no type hint, unsupported type, or cannot be resolved. Extends `ContainerException`. |
+| `UnresolvableParameterException` | Parameter has no type hint, is an unsupported type, or cannot be resolved. Extends `ContainerException`. |
+
+All live under `Temant\Container\Exception\`.
 
 ```php
 use Psr\Container\NotFoundExceptionInterface;
@@ -616,6 +668,8 @@ try {
 | `bind(abstract, target)` | Bind an abstract ID to a concrete target |
 | `alias(alias, target)` | Alias for `bind()` |
 | `when(consumer)` | Begin a contextual binding (returns builder) |
+| `when(c)->needs(a)->give(target\|closure\|ids[])` | Provide the dependency (list of IDs for variadics) |
+| `when(c)->needs(a)->giveTagged(tag)` | Provide every tagged service (for variadics) |
 
 ### Tagging & Extension
 
@@ -659,6 +713,7 @@ try {
 | `freeze()` | Prevent further modifications |
 | `isFrozen()` | Check if frozen |
 | `warmUp()` | Pre-resolve all singletons |
+| `initialized(id)` | Check whether a lazy service's factory has run |
 
 ### Container Hierarchy
 
