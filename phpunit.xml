@@ -6,10 +6,20 @@
     colors="true"
     cacheDirectory=".phpunit.cache"
     stopOnFailure="false"
+    failOnWarning="true"
+    failOnRisky="true"
+    failOnDeprecation="true"
+    beStrictAboutOutputDuringTests="true"
+    beStrictAboutCoverageMetadata="false"
+    displayDetailsOnTestsThatTriggerWarnings="true"
+    displayDetailsOnTestsThatTriggerDeprecations="true"
 >
     <testsuites>
-        <testsuite name="Container Tests">
-            <directory>Tests</directory>
+        <testsuite name="Unit">
+            <directory>Tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>Tests/Feature</directory>
         </testsuite>
     </testsuites>
 

@@ -7,7 +7,10 @@
         "container",
         "psr-11",
         "autowiring",
-        "di"
+        "di",
+        "service-provider",
+        "contextual-binding",
+        "lazy-loading"
     ],
     "authors": [
         {
@@ -40,7 +43,18 @@
             "@phpstan"
         ],
         "phpunit": "vendor/bin/phpunit",
-        "phpstan": "vendor/bin/phpstan"
+        "phpstan": "vendor/bin/phpstan analyse",
+        "coverage": "@putenv XDEBUG_MODE=coverage",
+        "test:coverage": [
+            "@coverage",
+            "vendor/bin/phpunit --coverage-text"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the test suite and static analysis",
+        "phpunit": "Run the PHPUnit test suite",
+        "phpstan": "Run PHPStan static analysis",
+        "test:coverage": "Run the test suite with a text coverage report"
     },
     "config": {
         "sort-packages": true

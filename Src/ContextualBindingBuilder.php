@@ -10,17 +10,21 @@ use Temant\Container\Exception\ContainerException;
 /**
  * Fluent builder for contextual bindings.
  *
- * Usage:
- *   $container->when(UserController::class)
- *             ->needs(LoggerInterface::class)
- *             ->give(FileLogger::class);
+ * ```php
+ * $container->when(ReportController::class)
+ *           ->needs(LoggerInterface::class)
+ *           ->give(FileLogger::class);
+ *
+ * $container->when(Dashboard::class)
+ *           ->needs(WidgetInterface::class)
+ *           ->giveTagged('widgets');           // typed variadic: WidgetInterface ...$widgets
+ * ```
  */
 final class ContextualBindingBuilder
 {
     private ?string $abstract = null;
 
     /**
-     * @param Container $container The container to register the binding on.
      * @param string $consumer The consuming class that triggers this binding.
      */
     public function __construct(
@@ -30,9 +34,8 @@ final class ContextualBindingBuilder
     }
 
     /**
-     * Specifies the abstract type or interface that the consumer needs.
+     * Declares the abstract type the consumer depends on.
      *
-     * @param string $abstract The abstract type identifier.
      * @return $this
      */
     public function needs(string $abstract): self
@@ -43,19 +46,44 @@ final class ContextualBindingBuilder
     }
 
     /**
-     * Specifies the concrete implementation to provide.
+     * Declares what to provide: a concrete class name, a factory closure, or -- for a
+     * typed variadic parameter -- a list of identifiers.
      *
-     * @param string|Closure(ContainerInterface): object $concrete A class name or factory closure.
-     * @return void
+     * @param string|Closure(ContainerInterface): object|list<string> $concrete
      *
-     * @throws ContainerException If needs() was not called first.
+     * @throws ContainerException If {@see needs()} was not called first.
      */
-    public function give(string|Closure $concrete): void
+    public function give(string|Closure|array $concrete): void
+    {
+        $this->container->addContextualBinding($this->consumer, $this->requireAbstract(), $concrete);
+    }
+
+    /**
+     * Provides every service registered under a tag. Intended for typed variadic
+     * parameters, where all tagged services are injected.
+     *
+     * @throws ContainerException If {@see needs()} was not called first.
+     */
+    public function giveTagged(string $tag): void
+    {
+        $abstract = $this->requireAbstract();
+
+        $this->container->addContextualBinding(
+            $this->consumer,
+            $abstract,
+            fn(Container $container): array => $container->tagged($tag),
+        );
+    }
+
+    /**
+     * @throws ContainerException
+     */
+    private function requireAbstract(): string
     {
         if ($this->abstract === null) {
-            throw new ContainerException('Cannot call give() before needs(). Use when()->needs()->give().');
+            throw new ContainerException('Call needs() before give()/giveTagged(): when()->needs()->give().');
         }
 
-        $this->container->addContextualBinding($this->consumer, $this->abstract, $concrete);
+        return $this->abstract;
     }
 }
